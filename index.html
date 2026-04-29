@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>RMU CSSU T2 Full Matching Dashboard</title>
+<title>RMU CSSU T2 Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -36,16 +36,16 @@ tr.addrow { background:#fef3c7; }
 <div class="app">
 
 <div class="left">
-<h2>RMU CSSU T2 Full Matching Dashboard</h2>
+<h2>RMU CSSU T2 Dashboard</h2>
 
 <div class="card">
 <b>Step 1:</b> Upload RMU Initial Excel<br>
 <input type="file" id="rmuFile" accept=".xlsx,.xls">
 <br>
-<button onclick="loadRMU()">Load RMU</button>
-<button onclick="loadGoogleSheet()">Load Google Sheet</button>
-<button onclick="analyze()">Analyze</button>
-<button onclick="exportFinal()">Export Final Excel</button>
+<button onclick="loadRMU()">1. Load RMU</button>
+<button onclick="loadGoogleSheet()">2. Load Google Sheet</button>
+<button onclick="analyze()">3. Analyze</button>
+<button onclick="exportFinal()">4. Export Final Excel</button>
 </div>
 
 <div class="card">
@@ -56,6 +56,8 @@ tr.addrow { background:#fef3c7; }
 
 <div class="card">
 <b>Summary</b>
+<div>RMU CSSU T2: <span id="sumRMU">0</span></div>
+<div>Google Sheet CSSU T2: <span id="sumSheet">0</span></div>
 <div>Onduty: <span id="sumOnduty">0</span></div>
 <div>Cancel: <span id="sumCancel">0</span></div>
 <div>Add: <span id="sumAdd">0</span></div>
@@ -93,7 +95,7 @@ let detectedDate = "";
 let sheetTab = "";
 
 function clean(v) {
-    return (v ?? "").toString().trim();
+    return (v ?? "").toString().replace(/\s+/g, " ").trim();
 }
 
 function normId(v) {
@@ -105,23 +107,24 @@ function setStatus(msg) {
 }
 
 function getFileDate(filename) {
-    let m = filename.match(/(\d{6})/);
+    const m = filename.match(/(\d{6})/);
     if (!m) return "";
-    let s = m[1];
-    let dd = s.slice(0,2);
-    let mm = s.slice(2,4);
-    let yy = "20" + s.slice(4,6);
+    const s = m[1];
+    const dd = s.slice(0,2);
+    const mm = s.slice(2,4);
+    const yy = "20" + s.slice(4,6);
     return `${dd}.${mm}.${yy}`;
 }
 
 function parseTimeFromShift(shift) {
-    let m = clean(shift).match(/(\d{4})\s*[-–]\s*(\d{4})/);
+    const m = clean(shift).match(/(\d{4})\s*[-–]\s*(\d{4})/);
     if (!m) return {start:"", end:""};
     return {start:m[1], end:m[2]};
 }
 
 function loadRMU() {
     const file = document.getElementById("rmuFile").files[0];
+
     if (!file) {
         alert("Please upload RMU file first");
         return;
@@ -133,29 +136,40 @@ function loadRMU() {
     document.getElementById("detectedDate").innerText = detectedDate || "Cannot detect";
     document.getElementById("sheetTab").innerText = sheetTab || "Cannot detect";
 
+    if (!detectedDate) {
+        setStatus("Cannot detect date from RMU filename. Filename should contain date like 240426.");
+        return;
+    }
+
     const reader = new FileReader();
 
     reader.onload = e => {
-        const wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, {defval:""});
+        try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, {defval:""});
 
-        rmuData = rows
-            .filter(r => clean(r["Deployment Location"]).includes("CSSU T2"))
-            .map(r => ({
-                demandId: clean(r["External Demand ID"]),
-                location: clean(r["Deployment Location"]),
-                date: clean(r["Deployment Date"]),
-                start: clean(r["Shift Start Time"]),
-                end: clean(r["Shift End Time"]),
-                id: normId(r["Personnel no."]),
-                first: clean(r["Person First Name"]),
-                last: clean(r["Person Last Name"]),
-                name: `${clean(r["Person First Name"])} ${clean(r["Person Last Name"])}`.trim()
-            }))
-            .filter(r => r.id);
+            rmuData = rows
+                .filter(r => clean(r["Deployment Location"]).includes("CSSU T2"))
+                .map(r => ({
+                    demandId: clean(r["External Demand ID"]),
+                    location: clean(r["Deployment Location"]),
+                    date: clean(r["Deployment Date"]),
+                    start: clean(r["Shift Start Time"]),
+                    end: clean(r["Shift End Time"]),
+                    id: normId(r["Personnel no."]),
+                    first: clean(r["Person First Name"]),
+                    last: clean(r["Person Last Name"]),
+                    name: `${clean(r["Person First Name"])} ${clean(r["Person Last Name"])}`.trim()
+                }))
+                .filter(r => r.id);
 
-        setStatus(`RMU loaded: ${rmuData.length} CSSU T2 officers`);
+            document.getElementById("sumRMU").innerText = rmuData.length;
+            setStatus(`RMU loaded: ${rmuData.length} CSSU T2 officers`);
+        } catch (err) {
+            console.error(err);
+            setStatus("RMU file read failed. Check Excel format.");
+        }
     };
 
     reader.readAsArrayBuffer(file);
@@ -170,45 +184,81 @@ function loadGoogleSheet() {
     setStatus("Loading Google Sheet...");
 
     const callback = "googleSheetCallback_" + Date.now();
+    let finished = false;
+
+    const timeout = setTimeout(() => {
+        if (!finished) {
+            finished = true;
+            setStatus("Google Sheet loading timeout. Check published sheet tab name: " + sheetTab);
+        }
+    }, 15000);
+
     window[callback] = function(response) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+
         try {
-            const cols = response.table.cols.map(c => clean(c.label));
+            if (!response || !response.table) {
+                setStatus("Google Sheet returned no table. Check published access or tab name: " + sheetTab);
+                return;
+            }
+
+            const cols = response.table.cols.map((c, i) => clean(c.label) || `COL${i}`);
             const rows = response.table.rows || [];
 
             sheetData = rows.map(row => {
                 const obj = {};
                 (row.c || []).forEach((cell, i) => {
-                    obj[cols[i] || `COL${i}`] = cell ? clean(cell.v) : "";
+                    obj[cols[i]] = cell ? clean(cell.v) : "";
                 });
 
+                const id = normId(obj["ID"] || obj["COL2"]);
+                const firstName = clean(obj["NAME"] || obj["COL3"]);
+                const lastName = clean(obj["COL4"]);
+                const shift = clean(obj["SHIFT"] || obj["SHIFT "] || obj["COL5"]);
+                const flight = clean(obj["FLIGHT DETAILS"] || obj["COL6"]);
+
                 return {
-                    no: obj[""] || obj["SQ"] || "",
-                    date: obj["DATE"],
-                    id: normId(obj["ID"]),
-                    first: clean(obj["NAME"]),
-                    last: clean(obj["COL4"]),
-                    name: `${clean(obj["NAME"])} ${clean(obj["COL4"])}`.trim(),
-                    shift: clean(obj["COL5"] || obj["SHIFT"] || obj["SHIFT "]),
-                    flight: clean(obj["FLIGHT DETAILS"]),
-                    updatedBy: clean(obj["UPDATED BY"]),
-                    postal: clean(obj["Postal Code"]),
-                    remarks: clean(obj["REMARKS (IF ANY)"])
+                    date: clean(obj["DATE"] || obj["COL1"]),
+                    id,
+                    first: firstName,
+                    last: lastName,
+                    name: `${firstName} ${lastName}`.trim(),
+                    shift,
+                    flight,
+                    updatedBy: clean(obj["UPDATED BY"] || obj["COL7"]),
+                    postal: clean(obj["Postal Code"] || obj["COL8"]),
+                    remarks: clean(obj["REMARKS (IF ANY)"] || obj["COL9"])
                 };
             }).filter(r => r.id && r.shift.includes("CSSU T2"));
 
-            setStatus(`Google Sheet loaded: ${sheetData.length} officers from ${sheetTab}`);
+            document.getElementById("sumSheet").innerText = sheetData.length;
+            setStatus(`Google Sheet loaded: ${sheetData.length} CSSU T2 officers from ${sheetTab}`);
         } catch (err) {
             console.error(err);
-            setStatus("Google Sheet parsing failed");
+            setStatus("Google Sheet parsing failed. Open Console for details.");
         }
 
-        delete window[callback];
-        script.remove();
+        try {
+            delete window[callback];
+            script.remove();
+        } catch(e) {}
     };
 
     const script = document.createElement("script");
+
+    script.onerror = function() {
+        if (!finished) {
+            finished = true;
+            clearTimeout(timeout);
+            setStatus("Google Sheet failed to load. Check published sheet access or tab name.");
+        }
+    };
+
     script.src =
-        `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?sheet=${encodeURIComponent(sheetTab)}&tqx=responseHandler:${callback}`;
+        `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?tqx=responseHandler:${callback};out:json&sheet=${encodeURIComponent(sheetTab)}`;
+
     document.body.appendChild(script);
 }
 
@@ -217,6 +267,7 @@ function analyze() {
         alert("Load RMU first");
         return;
     }
+
     if (!sheetData.length) {
         alert("Load Google Sheet first");
         return;
@@ -298,7 +349,7 @@ function renderResult() {
 
         tbody.innerHTML += `
         <tr class="${cls}">
-            <td class="${r.status.toLowerCase()}">${r.status}</td>
+            <td>${r.status}</td>
             <td>${r.id}</td>
             <td>${r.name}</td>
             <td>${r.shift}</td>
