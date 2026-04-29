@@ -17,17 +17,19 @@ button { padding:10px 14px; margin:5px 5px 5px 0; cursor:pointer; }
 input { margin:6px 0; }
 
 .card { background:#f8fafc; border:1px solid #ddd; padding:10px; margin:10px 0; border-radius:8px; }
-.ok { color:green; font-weight:bold; }
-.cancel { color:red; font-weight:bold; }
-.add { color:#b7791f; font-weight:bold; }
-.warn { color:#d97706; font-weight:bold; }
 
 table { border-collapse:collapse; width:100%; margin-top:10px; font-size:13px; }
 th, td { border:1px solid #ccc; padding:6px; text-align:left; }
 th { background:#e5e7eb; }
-tr.onduty { background:#ecfdf5; }
-tr.cancelrow { background:#fee2e2; }
-tr.addrow { background:#fef3c7; }
+
+.onduty { background:#ecfdf5; }
+.cancelrow { background:#fee2e2; }
+.addrow { background:#fef3c7; }
+
+.status-ok { color:green; font-weight:bold; }
+.status-cancel { color:red; font-weight:bold; }
+.status-add { color:#b7791f; font-weight:bold; }
+.warn { color:#d97706; font-weight:bold; }
 </style>
 </head>
 
@@ -36,28 +38,33 @@ tr.addrow { background:#fef3c7; }
 <div class="app">
 
 <div class="left">
-<h2>RMU CSSU T2 Dashboard</h2>
+<h2>RMU CSSU T2 Dashboard v3</h2>
 
 <div class="card">
 <b>Step 1:</b> Upload RMU Initial Excel<br>
 <input type="file" id="rmuFile" accept=".xlsx,.xls">
 <br>
+
+<b>Step 2:</b> Upload T2 Daily Flexi Data Excel<br>
+<input type="file" id="t2File" accept=".xlsx,.xls">
+<br>
+
 <button onclick="loadRMU()">1. Load RMU</button>
-<button onclick="loadGoogleSheet()">2. Load Google Sheet</button>
+<button onclick="loadT2Excel()">2. Load T2 Excel</button>
 <button onclick="analyze()">3. Analyze</button>
 <button onclick="exportFinal()">4. Export Final Excel</button>
 </div>
 
 <div class="card">
 <div>Detected RMU Date: <span id="detectedDate" class="warn">Not loaded</span></div>
-<div>Google Sheet Tab: <span id="sheetTab" class="warn">Not loaded</span></div>
+<div>T2 Sheet Tab: <span id="sheetTab" class="warn">Not loaded</span></div>
 <div>Status: <span id="status">Waiting...</span></div>
 </div>
 
 <div class="card">
 <b>Summary</b>
 <div>RMU CSSU T2: <span id="sumRMU">0</span></div>
-<div>Google Sheet CSSU T2: <span id="sumSheet">0</span></div>
+<div>T2 Excel CSSU T2: <span id="sumSheet">0</span></div>
 <div>Onduty: <span id="sumOnduty">0</span></div>
 <div>Cancel: <span id="sumCancel">0</span></div>
 <div>Add: <span id="sumAdd">0</span></div>
@@ -86,8 +93,6 @@ tr.addrow { background:#fef3c7; }
 </div>
 
 <script>
-const PUB_ID = "2PACX-1vT5UZfpu4IBxSX88YzvHa4nblcl82pCxemsLtl5ZsJf1CIIViGJpvX8MDtpvo1RR3kl76APBZ6FVyK-";
-
 let rmuData = [];
 let sheetData = [];
 let finalData = [];
@@ -175,91 +180,72 @@ function loadRMU() {
     reader.readAsArrayBuffer(file);
 }
 
-function loadGoogleSheet() {
+function loadT2Excel() {
     if (!sheetTab) {
         alert("Load RMU first so date tab can be detected");
         return;
     }
 
-    setStatus("Loading Google Sheet...");
+    const file = document.getElementById("t2File").files[0];
 
-    const callback = "googleSheetCallback_" + Date.now();
-    let finished = false;
+    if (!file) {
+        alert("Please upload T2 Daily Flexi Data Excel");
+        return;
+    }
 
-    const timeout = setTimeout(() => {
-        if (!finished) {
-            finished = true;
-            setStatus("Google Sheet loading timeout. Check published sheet tab name: " + sheetTab);
-        }
-    }, 15000);
+    setStatus("Loading T2 Daily Excel...");
 
-    window[callback] = function(response) {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeout);
+    const reader = new FileReader();
 
+    reader.onload = e => {
         try {
-            if (!response || !response.table) {
-                setStatus("Google Sheet returned no table. Check published access or tab name: " + sheetTab);
+            const wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+
+            const targetSheet = wb.SheetNames.find(s =>
+                clean(s) === sheetTab ||
+                clean(s).replace(/\s+/g, "") === sheetTab
+            );
+
+            if (!targetSheet) {
+                setStatus("Cannot find T2 sheet tab: " + sheetTab);
                 return;
             }
 
-            const cols = response.table.cols.map((c, i) => clean(c.label) || `COL${i}`);
-            const rows = response.table.rows || [];
+            const ws = wb.Sheets[targetSheet];
+            const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
 
-            sheetData = rows.map(row => {
-                const obj = {};
-                (row.c || []).forEach((cell, i) => {
-                    obj[cols[i]] = cell ? clean(cell.v) : "";
-                });
+            sheetData = [];
 
-                const id = normId(obj["ID"] || obj["COL2"]);
-                const firstName = clean(obj["NAME"] || obj["COL3"]);
-                const lastName = clean(obj["COL4"]);
-                const shift = clean(obj["SHIFT"] || obj["SHIFT "] || obj["COL5"]);
-                const flight = clean(obj["FLIGHT DETAILS"] || obj["COL6"]);
+            rows.forEach(row => {
+                const id = normId(row[2]);
+                const first = clean(row[3]);
+                const last = clean(row[4]);
+                const shift = clean(row[5]);
+                const flight = clean(row[6]);
+                const remarks = clean(row[9]);
 
-                return {
-                    date: clean(obj["DATE"] || obj["COL1"]),
-                    id,
-                    first: firstName,
-                    last: lastName,
-                    name: `${firstName} ${lastName}`.trim(),
-                    shift,
-                    flight,
-                    updatedBy: clean(obj["UPDATED BY"] || obj["COL7"]),
-                    postal: clean(obj["Postal Code"] || obj["COL8"]),
-                    remarks: clean(obj["REMARKS (IF ANY)"] || obj["COL9"])
-                };
-            }).filter(r => r.id && r.shift.includes("CSSU T2"));
+                if (id && shift.includes("CSSU T2")) {
+                    sheetData.push({
+                        id,
+                        first,
+                        last,
+                        name: `${first} ${last}`.trim(),
+                        shift,
+                        flight,
+                        remarks
+                    });
+                }
+            });
 
             document.getElementById("sumSheet").innerText = sheetData.length;
-            setStatus(`Google Sheet loaded: ${sheetData.length} CSSU T2 officers from ${sheetTab}`);
+            setStatus(`T2 Excel loaded: ${sheetData.length} CSSU T2 officers from ${targetSheet}`);
         } catch (err) {
             console.error(err);
-            setStatus("Google Sheet parsing failed. Open Console for details.");
-        }
-
-        try {
-            delete window[callback];
-            script.remove();
-        } catch(e) {}
-    };
-
-    const script = document.createElement("script");
-
-    script.onerror = function() {
-        if (!finished) {
-            finished = true;
-            clearTimeout(timeout);
-            setStatus("Google Sheet failed to load. Check published sheet access or tab name.");
+            setStatus("T2 Excel read failed");
         }
     };
 
-    script.src =
-        `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?tqx=responseHandler:${callback};out:json&sheet=${encodeURIComponent(sheetTab)}`;
-
-    document.body.appendChild(script);
+    reader.readAsArrayBuffer(file);
 }
 
 function analyze() {
@@ -269,7 +255,7 @@ function analyze() {
     }
 
     if (!sheetData.length) {
-        alert("Load Google Sheet first");
+        alert("Load T2 Excel first");
         return;
     }
 
@@ -294,7 +280,7 @@ function analyze() {
                 remark: "Onduty",
                 demandId: rmu.demandId,
                 location: rmu.location,
-                source: "RMU + Google Sheet"
+                source: "RMU + T2 Excel"
             });
         } else {
             finalData.push({
@@ -322,7 +308,7 @@ function analyze() {
                 remark: "Add",
                 demandId: "",
                 location: actual.shift,
-                source: "Google Sheet only"
+                source: "T2 Excel only"
             });
         }
     });
@@ -347,9 +333,14 @@ function renderResult() {
             r.status === "Cancel" ? "cancelrow" :
             "addrow";
 
+        const statusClass =
+            r.status === "Onduty" ? "status-ok" :
+            r.status === "Cancel" ? "status-cancel" :
+            "status-add";
+
         tbody.innerHTML += `
         <tr class="${cls}">
-            <td>${r.status}</td>
+            <td class="${statusClass}">${r.status}</td>
             <td>${r.id}</td>
             <td>${r.name}</td>
             <td>${r.shift}</td>
