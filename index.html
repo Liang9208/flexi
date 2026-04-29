@@ -1,4 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>RMU CSSU T2 Dashboard FINAL FIX</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+<style>
+body { margin:0; font-family:Arial; background:#f4f6f8; }
+.app { display:flex; height:100vh; }
+.left { width:55%; padding:16px; overflow:auto; background:white; }
+.right { width:45%; border-left:1px solid #ccc; }
+iframe { width:100%; height:100%; border:none; }
+
+button { padding:10px; margin:5px; cursor:pointer; }
+.card { background:#f8fafc; padding:10px; margin:10px 0; border:1px solid #ddd; }
+
+.dropbox {
+    border:2px dashed #999;
+    background:#fafafa;
+    padding:28px;
+    text-align:center;
+    cursor:pointer;
+    border-radius:10px;
+    margin-top:8px;
+}
+.dropbox.dragover {
+    border-color:#2563eb;
+    background:#dbeafe;
+}
+.file-name {
+    margin-top:8px;
+    font-weight:bold;
+    color:#2563eb;
+}
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { border:1px solid #ccc; padding:6px; }
+
+.onduty { background:#d1fae5; }
+.cancel { background:#fff200; }
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<div class="left">
+
+<h2>RMU CSSU T2 Dashboard FINAL FIX</h2>
+
+<div class="card">
+<b>Upload RMU Initial Excel</b>
+
+<div id="dropbox" class="dropbox" onclick="document.getElementById('rmuFile').click()">
+    Drop RMU Excel file here<br>
+    or click to choose file
+    <div id="fileName" class="file-name">No file selected</div>
+</div>
+
+<input type="file" id="rmuFile" accept=".xlsx,.xls" style="display:none">
+
+<br>
+<button onclick="loadGoogleSheetAndAnalyze()">1. Load Google Sheet & Analyze</button>
+<button onclick="exportExcel()">2. Export Final Excel</button>
+</div>
+
+<div class="card">
+<div>Detected Date: <span id="date">-</span></div>
+<div>Status: <span id="status">Waiting...</span></div>
+</div>
+
+<table id="table">
+<tr>
+<th>Remark</th>
+<th>Personnel no.</th>
+<th>Name</th>
+<th>Deployment Location</th>
+<th>Google Note</th>
+</tr>
+</table>
+
+</div>
+
+<div class="right">
+<iframe src="https://docs.google.com/spreadsheets/d/1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc/edit?gid=1412520827"></iframe>
+</div>
+
+</div>
+
 <script>
+const SHEET_ID = "1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc";
+
+let rmuData = [];
+let sheetData = [];
+let finalData = [];
+let sheetTab = "";
+
+const dropbox = document.getElementById("dropbox");
+const fileInput = document.getElementById("rmuFile");
+
+dropbox.addEventListener("dragover", e => {
+    e.preventDefault();
+    dropbox.classList.add("dragover");
+});
+
+dropbox.addEventListener("dragleave", e => {
+    e.preventDefault();
+    dropbox.classList.remove("dragover");
+});
+
+dropbox.addEventListener("drop", e => {
+    e.preventDefault();
+    dropbox.classList.remove("dragover");
+
+    const file = e.dataTransfer.files[0];
+    if(file){
+        handleRMUFile(file);
+    }
+});
+
+fileInput.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if(file){
+        handleRMUFile(file);
+    }
+});
+
+function clean(v){
+    return (v ?? "").toString().replace(/\s+/g, " ").trim();
+}
+
+function norm(v){
+    return clean(v).replace(/\.0$/, "");
+}
+
+function setStatus(s){
+    document.getElementById("status").innerText = s;
+}
+
+function detectDate(name){
+    let m = name.match(/(\d{6})/);
+    if(!m) return "";
+
+    let d = m[1];
+    return d.slice(0,2) + "." + d.slice(2,4) + ".20" + d.slice(4,6);
+}
+
+function cellText(cell){
+    if(!cell) return "";
+    return clean(cell.f ?? cell.v ?? "");
+}
+
+function excelSerialToDate(serial){
+    if(typeof serial !== "number") return clean(serial);
+
+    let utcDays = Math.floor(serial - 25569);
+    let utcValue = utcDays * 86400;
+    let date = new Date(utcValue * 1000);
+
+    let dd = String(date.getUTCDate()).padStart(2, "0");
+    let mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    let yyyy = date.getUTCFullYear();
+
+    return `${dd}/${mm}/${yyyy}`;
+}
+
+function excelSerialToTime(serial){
+    if(typeof serial !== "number") return clean(serial);
+
+    let totalMinutes = Math.round(serial * 24 * 60);
+    totalMinutes = totalMinutes % (24 * 60);
+
+    let hh = Math.floor(totalMinutes / 60);
+    let mm = totalMinutes % 60;
+
+    return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+
+function excelSerialToHours(serial){
+    if(typeof serial !== "number") return clean(serial);
+
+    let totalMinutes = Math.round(serial * 24 * 60);
+
+    let hh = Math.floor(totalMinutes / 60);
+    let mm = totalMinutes % 60;
+
+    return hh + ":" + String(mm).padStart(2, "0");
+}
+
+function getCellValue(ws, row, col){
+    let addr = XLSX.utils.encode_cell({r: row, c: col});
+    return ws[addr] ? ws[addr].v : "";
+}
+
+function parseTimeFromShift(shift){
+    let m = clean(shift).match(/(\d{4})\s*[-–]\s*(\d{4})/);
+
+    if(!m){
+        return { start:"", end:"", hours:"" };
+    }
+
+    let startRaw = m[1];
+    let endRaw = m[2];
+
+    let start = startRaw.slice(0,2) + ":" + startRaw.slice(2,4);
+    let end = endRaw.slice(0,2) + ":" + endRaw.slice(2,4);
+
+    let sh = parseInt(startRaw.slice(0,2));
+    let sm = parseInt(startRaw.slice(2,4));
+    let eh = parseInt(endRaw.slice(0,2));
+    let em = parseInt(endRaw.slice(2,4));
+
+    let startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+
+    if(endMin <= startMin){
+        endMin += 24 * 60;
+    }
+
+    let diff = endMin - startMin;
+    let hh = Math.floor(diff / 60);
+    let mm = diff % 60;
+
+    return {
+        start,
+        end,
+        hours: hh + ":" + String(mm).padStart(2, "0")
+    };
+}
+
+function handleRMUFile(file){
+    if(!file.name.match(/\.(xlsx|xls)$/i)){
+        alert("Please upload Excel file only");
+        return;
+    }
+
+    document.getElementById("fileName").innerText = file.name;
+
+    sheetTab = detectDate(file.name);
+    document.getElementById("date").innerText = sheetTab || "Cannot detect";
+
+    if(!sheetTab){
+        setStatus("Cannot detect date from RMU filename. Example filename should contain 240426.");
+        return;
+    }
+
+    setStatus("Reading RMU file...");
+
+    let reader = new FileReader();
+
+    reader.onload = e => {
+        try{
+            let wb = XLSX.read(new Uint8Array(e.target.result), {
+                type: "array",
+                cellDates: false
+            });
+
+            let ws = wb.Sheets[wb.SheetNames[0]];
+            let range = XLSX.utils.decode_range(ws["!ref"]);
+
+            rmuData = [];
+            sheetData = [];
+            finalData = [];
+            render();
+
+            for(let r = range.s.r + 1; r <= range.e.r; r++){
+                let externalDemandId = clean(getCellValue(ws, r, 0));
+                let deploymentLocation = clean(getCellValue(ws, r, 1));
+                let deploymentDateRaw = getCellValue(ws, r, 2);
+                let shiftStartRaw = getCellValue(ws, r, 3);
+                let shiftEndRaw = getCellValue(ws, r, 4);
+                let totalHoursRaw = getCellValue(ws, r, 5);
+                let personnelNo = norm(getCellValue(ws, r, 6));
+                let firstName = clean(getCellValue(ws, r, 7));
+                let lastName = clean(getCellValue(ws, r, 8));
+
+                if(!deploymentLocation.includes("CSSU T2")) continue;
+                if(!personnelNo) continue;
+
+                rmuData.push({
+                    id: personnelNo,
+                    original: {
+                        "External Demand ID": externalDemandId,
+                        "Deployment Location": deploymentLocation,
+                        "Deployment Date": excelSerialToDate(deploymentDateRaw),
+                        "Shift Start Time": excelSerialToTime(shiftStartRaw),
+                        "Shift End Time": excelSerialToTime(shiftEndRaw),
+                        "TOTAL SHIFT HOURS": excelSerialToHours(totalHoursRaw),
+                        "Personnel no.": personnelNo,
+                        "Person First Name": firstName,
+                        "Person Last Name": lastName
+                    }
+                });
+            }
+
+            setStatus("RMU auto-loaded: " + rmuData.length + " CSSU T2 officers. Now click Load Google Sheet & Analyze.");
+
+        }catch(err){
+            console.error(err);
+            setStatus("RMU read error");
+        }
+    };
+
+    reader.readAsArrayBuffer(file);
+}
+
 function loadGoogleSheetAndAnalyze(){
     if(!sheetTab){
         alert("Upload RMU first");
@@ -58,7 +367,6 @@ function loadGoogleSheetAndAnalyze(){
             });
 
             setStatus("Google Sheet Loaded: " + sheetData.length + " CSSU T2 officers. Analyzing...");
-
             analyze();
 
         }catch(e){
@@ -71,4 +379,232 @@ function loadGoogleSheetAndAnalyze(){
     script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${cb}&sheet=${encodeURIComponent(sheetTab)}`;
     document.body.appendChild(script);
 }
+
+function isCancelled(s){
+    let text = (
+        (s.flight || "") + " " +
+        (s.remarks || "") + " " +
+        (s.postal || "") + " " +
+        (s.updatedBy || "") + " " +
+        (s.rawText || "")
+    ).toLowerCase();
+
+    const cancelWords = [
+        "cancel",
+        "cancelled",
+        "canceled",
+        "cancel booking",
+        "cancelled booking",
+        "canceled booking",
+        "absent",
+        "absence",
+        "no show",
+        "noshow",
+        "dnr",
+        "did not report",
+        "didnt report",
+        "didn't report",
+        "mc",
+        "medical",
+        "medical leave"
+    ];
+
+    return cancelWords.some(w => text.includes(w));
+}
+
+function analyze(){
+    if(!rmuData.length){
+        alert("Upload RMU first");
+        return;
+    }
+
+    if(!sheetData.length){
+        alert("Load Google Sheet first");
+        return;
+    }
+
+    let rmap = new Map();
+    let smap = new Map();
+
+    rmuData.forEach(r => rmap.set(r.id, r));
+
+    sheetData.forEach(s => {
+        if(!smap.has(s.id)){
+            smap.set(s.id, s);
+        }else{
+            let existing = smap.get(s.id);
+
+            if(isCancelled(s)){
+                smap.set(s.id, s);
+            }else if(!isCancelled(existing)){
+                smap.set(s.id, existing);
+            }
+        }
+    });
+
+    finalData = [];
+
+    rmuData.forEach(r => {
+        let s = smap.get(r.id);
+        let remark = "Cancelled";
+        let googleNote = "";
+
+        if(s){
+            remark = isCancelled(s) ? "Cancelled" : "Onduty";
+            googleNote = clean((s.flight || "") + " " + (s.remarks || ""));
+        }
+
+        finalData.push({
+            ...r.original,
+            "Remark": remark,
+            "_Google Note": googleNote
+        });
+    });
+
+    sheetData.forEach(s => {
+        if(!rmap.has(s.id)){
+            let time = parseTimeFromShift(s.shift);
+
+            finalData.push({
+                "External Demand ID": "",
+                "Deployment Location": s.shift,
+                "Deployment Date": sheetTab.replaceAll(".", "/"),
+                "Shift Start Time": time.start,
+                "Shift End Time": time.end,
+                "TOTAL SHIFT HOURS": time.hours,
+                "Personnel no.": s.id,
+                "Person First Name": s.first,
+                "Person Last Name": s.last,
+                "Remark": isCancelled(s) ? "Cancelled" : "Onduty",
+                "_Google Note": clean((s.flight || "") + " " + (s.remarks || ""))
+            });
+        }
+    });
+
+    render();
+    setStatus("Analysis Done. Final rows: " + finalData.length);
+}
+
+function render(){
+    let table = document.getElementById("table");
+
+    table.innerHTML = `
+    <tr>
+        <th>Remark</th>
+        <th>Personnel no.</th>
+        <th>Name</th>
+        <th>Deployment Location</th>
+        <th>Google Note</th>
+    </tr>`;
+
+    finalData.forEach(r => {
+        let cls = r["Remark"] === "Onduty" ? "onduty" : "cancel";
+        let name = clean(r["Person First Name"]) + " " + clean(r["Person Last Name"]);
+
+        table.innerHTML += `
+        <tr class="${cls}">
+            <td>${r["Remark"]}</td>
+            <td>${r["Personnel no."]}</td>
+            <td>${name}</td>
+            <td>${r["Deployment Location"]}</td>
+            <td>${r["_Google Note"] || ""}</td>
+        </tr>`;
+    });
+}
+
+async function exportExcel(){
+    if(!finalData.length){
+        alert("Analyze first");
+        return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("PBSU T2");
+
+    const headers = [
+        "External Demand ID",
+        "Deployment Location",
+        "Deployment Date",
+        "Shift Start Time",
+        "Shift End Time",
+        "TOTAL SHIFT HOURS",
+        "Personnel no.",
+        "Person First Name",
+        "Person Last Name",
+        "Remark"
+    ];
+
+    worksheet.addRow(headers);
+
+    worksheet.getRow(1).eachCell(cell => {
+        cell.font = { bold: true };
+        cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFD9D9D9" }
+        };
+        cell.border = {
+            top: {style:"thin"},
+            left: {style:"thin"},
+            bottom: {style:"thin"},
+            right: {style:"thin"}
+        };
+    });
+
+    finalData.forEach(r => {
+        const row = worksheet.addRow([
+            r["External Demand ID"] || "",
+            r["Deployment Location"] || "",
+            r["Deployment Date"] || "",
+            r["Shift Start Time"] || "",
+            r["Shift End Time"] || "",
+            r["TOTAL SHIFT HOURS"] || "",
+            r["Personnel no."] || "",
+            r["Person First Name"] || "",
+            r["Person Last Name"] || "",
+            r["Remark"] || ""
+        ]);
+
+        row.eachCell(cell => {
+            cell.border = {
+                top: {style:"thin"},
+                left: {style:"thin"},
+                bottom: {style:"thin"},
+                right: {style:"thin"}
+            };
+        });
+
+        if(r["Remark"] === "Cancelled"){
+            row.getCell(10).fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFFFF00" }
+            };
+        }
+    });
+
+    worksheet.columns.forEach(column => {
+        let maxLength = 12;
+        column.eachCell({ includeEmpty: true }, cell => {
+            let value = cell.value ? cell.value.toString() : "";
+            maxLength = Math.max(maxLength, value.length);
+        });
+        column.width = Math.min(maxLength + 2, 40);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `RMU_CSSU_T2_Final_${sheetTab}.xlsx`;
+    link.click();
+
+    URL.revokeObjectURL(link.href);
+}
 </script>
+
+</body>
+</html>
