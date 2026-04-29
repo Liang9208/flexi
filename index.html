@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>RMU CSSU T2 Dashboard FINAL</title>
+<title>RMU CSSU T2 Dashboard FINAL FIXED</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -25,7 +25,7 @@ th, td { border:1px solid #ccc; padding:6px; }
 <div class="app">
 
 <div class="left">
-<h2>RMU CSSU T2 Dashboard FINAL</h2>
+<h2>RMU CSSU T2 Dashboard FINAL FIXED</h2>
 
 <div class="card">
 Upload RMU Initial Excel<br>
@@ -82,8 +82,28 @@ function detectDate(name){
 
 function parseTimeFromShift(shift){
     let m = clean(shift).match(/(\d{4})\s*[-–]\s*(\d{4})/);
-    if(!m) return {start:"", end:""};
-    return {start:m[1], end:m[2]};
+    if(!m) return {start:"", end:"", hours:""};
+    let start = m[1].slice(0,2) + ":" + m[1].slice(2,4);
+    let end = m[2].slice(0,2) + ":" + m[2].slice(2,4);
+
+    let sh = parseInt(m[1].slice(0,2));
+    let sm = parseInt(m[1].slice(2,4));
+    let eh = parseInt(m[2].slice(0,2));
+    let em = parseInt(m[2].slice(2,4));
+
+    let startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if(endMin <= startMin) endMin += 24 * 60;
+
+    let diff = endMin - startMin;
+    let hh = Math.floor(diff / 60);
+    let mm = diff % 60;
+
+    return {
+        start,
+        end,
+        hours: hh + ":" + String(mm).padStart(2,"0")
+    };
 }
 
 function loadRMU(){
@@ -96,14 +116,31 @@ function loadRMU(){
     let reader = new FileReader();
 
     reader.onload = e=>{
-        let wb = XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+        let wb = XLSX.read(new Uint8Array(e.target.result),{
+            type:"array",
+            cellDates:true
+        });
+
         let ws = wb.Sheets[wb.SheetNames[0]];
-        let rows = XLSX.utils.sheet_to_json(ws,{defval:""});
+        let rows = XLSX.utils.sheet_to_json(ws,{
+            defval:"",
+            raw:false
+        });
 
         rmuData = rows
             .filter(r => clean(r["Deployment Location"]).includes("CSSU T2"))
             .map(r => ({
-                original: r,
+                original: {
+                    "External Demand ID": clean(r["External Demand ID"]),
+                    "Deployment Location": clean(r["Deployment Location"]),
+                    "Deployment Date": clean(r["Deployment Date"]),
+                    "Shift Start Time": clean(r["Shift Start Time"]),
+                    "Shift End Time": clean(r["Shift End Time"]),
+                    "Total Shift Hours": clean(r["Total Shift Hours"] || r["TOTAL SHIFT HOURS"]),
+                    "Personnel no.": norm(r["Personnel no."]),
+                    "Person First Name": clean(r["Person First Name"]),
+                    "Person Last Name": clean(r["Person Last Name"])
+                },
                 id: norm(r["Personnel no."]),
                 name: clean(r["Person First Name"]) + " " + clean(r["Person Last Name"]),
                 shift: clean(r["Deployment Location"])
@@ -201,7 +238,7 @@ function analyze(){
 
         finalData.push({
             ...r.original,
-            Remark: remark
+            "Remark": remark
         });
     });
 
@@ -212,10 +249,10 @@ function analyze(){
             finalData.push({
                 "External Demand ID": "",
                 "Deployment Location": s.shift,
-                "Deployment Date": sheetTab,
+                "Deployment Date": sheetTab.replaceAll(".", "/"),
                 "Shift Start Time": time.start,
                 "Shift End Time": time.end,
-                "Total Shift Hours": "",
+                "Total Shift Hours": time.hours,
                 "Personnel no.": s.id,
                 "Person First Name": s.first,
                 "Person Last Name": s.last,
@@ -263,10 +300,10 @@ function exportExcel(){
     const exportRows = finalData.map(r => ({
         "External Demand ID": r["External Demand ID"] || "",
         "Deployment Location": r["Deployment Location"] || "",
-        "Deployment Date": r["Deployment Date"] || sheetTab,
+        "Deployment Date": r["Deployment Date"] || sheetTab.replaceAll(".", "/"),
         "Shift Start Time": r["Shift Start Time"] || "",
         "Shift End Time": r["Shift End Time"] || "",
-        "Total Shift Hours": r["Total Shift Hours"] || r["TOTAL SHIFT HOURS"] || "",
+        "Total Shift Hours": r["Total Shift Hours"] || "",
         "Personnel no.": r["Personnel no."] || "",
         "Person First Name": r["Person First Name"] || "",
         "Person Last Name": r["Person Last Name"] || "",
