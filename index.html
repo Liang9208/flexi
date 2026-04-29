@@ -54,6 +54,7 @@ Upload RMU Initial Excel<br>
 <th>Personnel no.</th>
 <th>Name</th>
 <th>Deployment Location</th>
+<th>Google Flight / Remark</th>
 </tr>
 </table>
 
@@ -74,11 +75,16 @@ let finalData = [];
 let sheetTab = "";
 
 function clean(v){
-    return (v ?? "").toString().trim();
+    return (v ?? "").toString().replace(/\s+/g, " ").trim();
 }
 
 function norm(v){
     return clean(v).replace(/\.0$/, "");
+}
+
+function cellText(cell){
+    if(!cell) return "";
+    return clean(cell.f ?? cell.v ?? "");
 }
 
 function setStatus(s){
@@ -209,12 +215,14 @@ function loadGoogleSheet(){
             rows.forEach(r => {
                 let c = r.c || [];
 
-                let id = norm(c[2]?.v);
-                let first = clean(c[3]?.v);
-                let last = clean(c[4]?.v);
-                let shift = clean(c[5]?.v);
-                let flight = clean(c[6]?.v);
-                let remarks = clean(c[9]?.v);
+                let id = norm(cellText(c[2]));
+                let first = cellText(c[3]);
+                let last = cellText(c[4]);
+                let shift = cellText(c[5]);
+                let flight = cellText(c[6]);
+                let updatedBy = cellText(c[7]);
+                let postal = cellText(c[8]);
+                let remarks = cellText(c[9]);
 
                 if(id && shift.includes("CSSU T2")){
                     sheetData.push({
@@ -223,7 +231,21 @@ function loadGoogleSheet(){
                         last,
                         shift,
                         flight,
-                        remarks
+                        updatedBy,
+                        postal,
+                        remarks,
+                        rawText: [
+                            cellText(c[0]),
+                            cellText(c[1]),
+                            cellText(c[2]),
+                            cellText(c[3]),
+                            cellText(c[4]),
+                            cellText(c[5]),
+                            cellText(c[6]),
+                            cellText(c[7]),
+                            cellText(c[8]),
+                            cellText(c[9])
+                        ].join(" ")
                     });
                 }
             });
@@ -242,7 +264,13 @@ function loadGoogleSheet(){
 }
 
 function isCancelled(s){
-    let text = ((s.flight || "") + " " + (s.remarks || "")).toLowerCase();
+    let text = (
+        (s.flight || "") + " " +
+        (s.remarks || "") + " " +
+        (s.postal || "") + " " +
+        (s.updatedBy || "") + " " +
+        (s.rawText || "")
+    ).toLowerCase();
 
     const cancelWords = [
         "cancel",
@@ -257,6 +285,8 @@ function isCancelled(s){
         "noshow",
         "dnr",
         "did not report",
+        "didnt report",
+        "didn't report",
         "mc",
         "medical",
         "medical leave"
@@ -280,25 +310,43 @@ function analyze(){
     let smap = new Map();
 
     rmuData.forEach(r => rmap.set(r.id, r));
-    sheetData.forEach(s => smap.set(s.id, s));
+
+    // Important fix:
+    // If same ID appears more than once in Google Sheet,
+    // any row with cancel / absent / cancelled booking will win.
+    sheetData.forEach(s => {
+        if(!smap.has(s.id)){
+            smap.set(s.id, s);
+        }else{
+            let existing = smap.get(s.id);
+
+            if(isCancelled(s)){
+                smap.set(s.id, s);
+            }else if(!isCancelled(existing)){
+                smap.set(s.id, existing);
+            }
+        }
+    });
 
     finalData = [];
 
-    // Important:
     // Final report follows RMU initial sequence.
     // Every RMU CSSU T2 officer is kept.
     // If officer is missing from Google Sheet, mark Cancelled.
     rmuData.forEach(r => {
         let s = smap.get(r.id);
         let remark = "Cancelled";
+        let googleNote = "";
 
         if(s){
             remark = isCancelled(s) ? "Cancelled" : "Onduty";
+            googleNote = clean((s.flight || "") + " " + (s.remarks || ""));
         }
 
         finalData.push({
             ...r.original,
-            "Remark": remark
+            "Remark": remark,
+            "_Google Note": googleNote
         });
     });
 
@@ -317,7 +365,8 @@ function analyze(){
                 "Personnel no.": s.id,
                 "Person First Name": s.first,
                 "Person Last Name": s.last,
-                "Remark": isCancelled(s) ? "Cancelled" : "Onduty"
+                "Remark": isCancelled(s) ? "Cancelled" : "Onduty",
+                "_Google Note": clean((s.flight || "") + " " + (s.remarks || ""))
             });
         }
     });
@@ -335,6 +384,7 @@ function render(){
         <th>Personnel no.</th>
         <th>Name</th>
         <th>Deployment Location</th>
+        <th>Google Flight / Remark</th>
     </tr>`;
 
     finalData.forEach(r => {
@@ -347,6 +397,7 @@ function render(){
             <td>${r["Personnel no."]}</td>
             <td>${name}</td>
             <td>${r["Deployment Location"]}</td>
+            <td>${r["_Google Note"] || ""}</td>
         </tr>`;
     });
 }
