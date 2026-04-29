@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>RMU CSSU T2 Dashboard (Google Sheet)</title>
+<title>RMU CSSU T2 Dashboard FINAL</title>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
@@ -22,7 +22,6 @@ th, td { border:1px solid #ccc; padding:6px; }
 
 .onduty { background:#d1fae5; }
 .cancel { background:#fee2e2; }
-.add { background:#fef3c7; }
 </style>
 </head>
 
@@ -32,7 +31,7 @@ th, td { border:1px solid #ccc; padding:6px; }
 
 <div class="left">
 
-<h2>RMU CSSU T2 Dashboard (Google Sheet)</h2>
+<h2>RMU CSSU T2 Dashboard FINAL</h2>
 
 <div class="card">
 Upload RMU Initial Excel<br>
@@ -50,7 +49,7 @@ Upload RMU Initial Excel<br>
 </div>
 
 <table id="table">
-<tr><th>Status</th><th>ID</th><th>Name</th><th>Shift</th><th>Flight</th></tr>
+<tr><th>Status</th><th>ID</th><th>Name</th><th>Shift</th></tr>
 </table>
 
 </div>
@@ -128,7 +127,6 @@ function loadGoogleSheet(){
         try{
 
             let rows = res.table.rows;
-
             sheetData = [];
 
             rows.forEach(r=>{
@@ -138,9 +136,10 @@ function loadGoogleSheet(){
                 let name = clean(c[3]?.v)+" "+clean(c[4]?.v);
                 let shift = clean(c[5]?.v);
                 let flight = clean(c[6]?.v);
+                let remarks = clean(c[9]?.v);
 
                 if(id && shift.includes("CSSU T2")){
-                    sheetData.push({id,name,shift,flight});
+                    sheetData.push({id,name,shift,flight,remarks});
                 }
             });
 
@@ -157,6 +156,11 @@ function loadGoogleSheet(){
     document.body.appendChild(script);
 }
 
+function isCancelled(s){
+    let text = ((s.flight||"") + " " + (s.remarks||"")).toLowerCase();
+    return text.includes("cancel");
+}
+
 function analyze(){
 
     let rmap = new Map();
@@ -167,31 +171,51 @@ function analyze(){
 
     finalData = [];
 
+    // RMU side
     rmuData.forEach(r=>{
         if(smap.has(r.id)){
             let s = smap.get(r.id);
-            finalData.push({status:"Onduty",...s});
+
+            finalData.push({
+                id:s.id,
+                name:s.name,
+                shift:s.shift,
+                status: isCancelled(s) ? "Cancelled" : "Onduty"
+            });
+
         }else{
-            finalData.push({status:"Cancel",...r});
+            finalData.push({
+                id:r.id,
+                name:r.name,
+                shift:r.shift,
+                status:"Cancelled"
+            });
         }
     });
 
+    // Google-only
     sheetData.forEach(s=>{
         if(!rmap.has(s.id)){
-            finalData.push({status:"Add",...s});
+            finalData.push({
+                id:s.id,
+                name:s.name,
+                shift:s.shift,
+                status: isCancelled(s) ? "Cancelled" : "Onduty"
+            });
         }
     });
 
     render();
+    setStatus("Analysis Done");
 }
 
 function render(){
 
     let table = document.getElementById("table");
-    table.innerHTML = "<tr><th>Status</th><th>ID</th><th>Name</th><th>Shift</th><th>Flight</th></tr>";
+    table.innerHTML = "<tr><th>Status</th><th>ID</th><th>Name</th><th>Shift</th></tr>";
 
     finalData.forEach(r=>{
-        let cls = r.status==="Onduty"?"onduty":r.status==="Cancel"?"cancel":"add";
+        let cls = r.status==="Onduty"?"onduty":"cancel";
 
         table.innerHTML += `
         <tr class="${cls}">
@@ -199,18 +223,15 @@ function render(){
             <td>${r.id}</td>
             <td>${r.name}</td>
             <td>${r.shift}</td>
-            <td>${r.flight||""}</td>
         </tr>`;
     });
-
-    setStatus("Analysis Done");
 }
 
 function exportExcel(){
     let ws = XLSX.utils.json_to_sheet(finalData);
     let wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,"Result");
-    XLSX.writeFile(wb,"RMU_Final.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Result");
+    XLSX.writeFile(wb, "RMU_Final.xlsx");
 }
 
 </script>
