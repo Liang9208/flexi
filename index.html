@@ -9,13 +9,55 @@
 
 <style>
 body { margin:0; font-family:Arial; background:#f4f6f8; }
-.app { display:flex; height:100vh; }
-.left { width:45%; padding:16px; overflow:auto; background:white; }
-.right { width:55%; border-left:1px solid #ccc; }
-iframe { width:100%; height:100%; border:none; }
+
+.app {
+    display:flex;
+    height:100vh;
+    width:100vw;
+    overflow:hidden;
+}
+
+.left {
+    flex: 0 0 45%;
+    padding:16px;
+    overflow:auto;
+    background:white;
+    box-sizing:border-box;
+}
+
+#divider {
+    width:6px;
+    cursor:col-resize;
+    background:#ddd;
+    flex:0 0 6px;
+    transition:background 0.2s;
+}
+
+#divider:hover,
+#divider.dragging {
+    background:#2563eb;
+}
+
+.right {
+    flex:1;
+    border-left:1px solid #ccc;
+    min-width:0;
+}
+
+iframe {
+    width:100%;
+    height:100%;
+    border:none;
+}
 
 button { padding:10px; margin:5px; cursor:pointer; }
-.card { background:#f8fafc; padding:10px; margin:10px 0; border:1px solid #ddd; }
+
+.card {
+    background:#f8fafc;
+    padding:10px;
+    margin:10px 0;
+    border:1px solid #ddd;
+}
 
 .dropbox {
     border:2px dashed #999;
@@ -26,18 +68,28 @@ button { padding:10px; margin:5px; cursor:pointer; }
     border-radius:10px;
     margin-top:8px;
 }
+
 .dropbox.dragover {
     border-color:#2563eb;
     background:#dbeafe;
 }
+
 .file-name {
     margin-top:8px;
     font-weight:bold;
     color:#2563eb;
 }
 
-table { width:100%; border-collapse:collapse; font-size:13px; }
-th, td { border:1px solid #ccc; padding:6px; }
+table {
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+}
+
+th, td {
+    border:1px solid #ccc;
+    padding:6px;
+}
 
 .onduty { background:#d1fae5; }
 .cancel { background:#fff200; }
@@ -84,6 +136,8 @@ th, td { border:1px solid #ccc; padding:6px; }
 </table>
 
 </div>
+
+<div id="divider"></div>
 
 <div class="right">
 <iframe src="https://docs.google.com/spreadsheets/d/1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc/edit?gid=1412520827"></iframe>
@@ -604,6 +658,41 @@ async function exportExcel(){
 
     URL.revokeObjectURL(link.href);
 }
+
+/* ===== RESIZABLE SPLIT SCREEN ===== */
+const divider = document.getElementById("divider");
+const leftPanel = document.querySelector(".left");
+const app = document.querySelector(".app");
+
+let isDragging = false;
+
+divider.addEventListener("mousedown", () => {
+    isDragging = true;
+    divider.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+});
+
+document.addEventListener("mouseup", () => {
+    if(!isDragging) return;
+
+    isDragging = false;
+    divider.classList.remove("dragging");
+    document.body.style.cursor = "default";
+    document.body.style.userSelect = "auto";
+});
+
+document.addEventListener("mousemove", e => {
+    if(!isDragging) return;
+
+    let appWidth = app.offsetWidth;
+    let newLeftWidth = (e.clientX / appWidth) * 100;
+
+    if(newLeftWidth < 20) newLeftWidth = 20;
+    if(newLeftWidth > 80) newLeftWidth = 80;
+
+    leftPanel.style.flex = `0 0 ${newLeftWidth}%`;
+});
 </script>
 
 </body>
