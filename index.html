@@ -60,8 +60,8 @@ th { background:#f1f5f9; position: sticky; top: 0; }
 <body>
 
 <div class="app">
-<div class="left">
-<h2 style="margin:0 0 15px; color:#1e293b;">PBSU T2 Flexi Management</h2>
+<div class="center">
+<h2 style="margin:0 0 15px; color:#1e293b;">PBSU T2 Flexi Management2</h2>
 
 <div class="card">
   <b>1. Upload RMU Finalized Excel</b>
@@ -78,6 +78,7 @@ th { background:#f1f5f9; position: sticky; top: 0; }
     <input type="text" id="tabInput" placeholder="e.g. 07.05.2026" />
     <button onclick="autoDetectTab()">Auto-detect</button>
   </div>
+  <p style="font-size:11px; color:#64748b; margin:8px 0 0;">(Must match the tab name in Google Sheets exactly!)</p>
 </div>
 
 <div style="display:flex; gap:10px;">
@@ -90,7 +91,7 @@ th { background:#f1f5f9; position: sticky; top: 0; }
 
 <table id="table">
   <thead>
-    <tr><th>Remark</th><th>ID</th><th>Name</th><th>Deployment Location</th><th>Flight/Note</th></tr>
+    <tr><th>Remark</th><th>ID</th><th>Name</th><th>Deployment Location</th><th>Flight / Note</th></tr>
   </thead>
   <tbody id="tableBody"></tbody>
 </table>
@@ -109,7 +110,7 @@ let rmuData=[], sheetData=[], finalData=[];
 
 const clean = (v) => (v ?? "").toString().replace(/\s+/g," ").trim();
 
-// CRITICAL FIX: Strip commas, decimals, and spaces to perfectly match IDs (165,563 -> 165563)
+// Strict normalizer for IDs (Removes commas, spaces, handles alphanumeric like G2709731L)
 const norm = (v) => clean(v).replace(/\.0$/, "").replace(/,/g, "").replace(/\s/g, "").toUpperCase();
 
 const setStatus = (s,type="info") => {
@@ -188,58 +189,68 @@ function loadGoogleSheetAndAnalyze(){
     window[cb] = function(res){
         clearTimeout(timeout);
         try {
-            let cols = res.table.cols || [];
             let rows = res.table.rows || [];
             if(!rows.length) { setStatus("⚠️ Tab found but it is empty.", "warn"); return; }
 
-            // Dynamic Column Detection (Checks official headers first, then Row 0 fallback)
-            let idIdx = -1, shiftIdx = -1, flightIdx = -1, noteIdx = -1;
-            
-            cols.forEach((col, i) => {
-                let txt = (col.label || "").toUpperCase();
-                if(txt === "ID" && idIdx === -1) idIdx = i;
-                if(txt.includes("SHIFT") && shiftIdx === -1) shiftIdx = i;
-                if(txt.includes("FLIGHT") && flightIdx === -1) flightIdx = i;
-                if((txt.includes("REMARK") || txt.includes("NOTE")) && noteIdx === -1) noteIdx = i;
-            });
-
-            if(idIdx === -1 || shiftIdx === -1) {
-                let headerRow = rows[0].c || [];
-                for(let i=0; i < headerRow.length; i++) {
-                    let txt = cellText(headerRow[i]).toUpperCase();
-                    if(txt === "ID" && idIdx === -1) idIdx = i;
-                    if(txt.includes("SHIFT") && shiftIdx === -1) shiftIdx = i;
-                    if(txt.includes("FLIGHT") && flightIdx === -1) flightIdx = i;
-                    if((txt.includes("REMARK") || txt.includes("NOTE")) && noteIdx === -1) noteIdx = i;
+            // Find ID Column (Usually Column C / Index 2)
+            let idIdx = 2; 
+            let headerRow = rows[0].c || [];
+            for(let i=0; i < headerRow.length; i++) {
+                if(cellText(headerRow[i]).toUpperCase() === "ID") {
+                    idIdx = i;
+                    break;
                 }
             }
 
-            // Fallbacks if auto-detect absolutely fails
-            if(idIdx === -1) idIdx = 2; // Col C
-            if(shiftIdx === -1) shiftIdx = 5; // Col F
-            if(flightIdx === -1) flightIdx = 6; // Col G
-            if(noteIdx === -1) noteIdx = 9; // Col J
-
             sheetData = [];
+            
+            // Scan every row
             rows.forEach((r, idx) => {
-                let c = r.c || [];
-                let id = norm(cellText(c[idIdx]));
-                let shift = cellText(c[shiftIdx]);
+                if(idx === 0) return; // Skip headers
                 
-                if(id && shift.toUpperCase().includes("CSSU T2")){
-                    sheetData.push({
-                        id: id, // Guaranteed to have no commas via norm()
-                        shift: shift,
-                        flight: cellText(c[flightIdx]),
-                        remarks: cellText(c[noteIdx]),
-                        rawText: c.map(cell => cellText(cell).toLowerCase()).join(" ")
-                    });
+                let c = r.c || [];
+                let rowArr = c.map(cell => cellText(cell));
+                let rawStr = rowArr.join(" ").toUpperCase();
+                
+                // If the row is related to CSSU T2
+                if(rawStr.includes("CSSU T2")) {
+                    
+                    // 1. Get ID
+                    let idValue = norm(rowArr[idIdx]);
+                    if(!idValue || idValue.length < 4) {
+                        // Fallback: Check first 4 columns for anything that looks like an ID
+                        for(let i=0; i<4; i++){
+                            let val = norm(rowArr[i]);
+                            if(val.length >= 5) { idValue = val; break; }
+                        }
+                    }
+
+                    // 2. Extract Shift & Notes by scanning the row array
+                    let shiftIdx = rowArr.findIndex(txt => txt.toUpperCase().includes("CSSU T2"));
+                    let shiftValue = shiftIdx !== -1 ? rowArr[shiftIdx] : "CSSU T2";
+                    
+                    // Note is everything to the right of the shift column
+                    let noteValue = "";
+                    if(shiftIdx !== -1 && shiftIdx < rowArr.length - 1) {
+                        noteValue = rowArr.slice(shiftIdx + 1).filter(v => v !== "").join(" | ");
+                    }
+
+                    if(idValue) {
+                        sheetData.push({
+                            id: idValue,
+                            shift: shiftValue,
+                            remarks: noteValue,
+                            rawText: rawStr
+                        });
+                    }
                 }
             });
 
+            // If 0 matches, show the user EXACTLY what tab Google loaded to prove it's a mismatch
             if(sheetData.length === 0) {
-                alert(`Error: No CSSU T2 matches found in Column ${shiftIdx+1}. Check if you need to manually change the tab name.`);
-                setStatus("❌ Data Mismatch", "err");
+                let preview = rows.slice(1, 4).map(r => (r.c || []).map(cell => cellText(cell)).join(" | ")).join("\n");
+                alert(`Error: No 'CSSU T2' data found!\n\nIf your Tab Name doesn't perfectly match the Google Sheet, Google defaults to loading the VERY FIRST tab in the document.\n\nHere is a preview of the data it just loaded:\n\n${preview}\n\nPlease fix the Tab Name in Step 2.`);
+                setStatus("❌ Data Mismatch - Wrong Tab?", "err");
                 return;
             }
             
@@ -258,7 +269,7 @@ function loadGoogleSheetAndAnalyze(){
 function performJoin(){
     let smap = new Map();
     sheetData.forEach(s => {
-        const cancelKeywords = ["cancel", "absent", "noshow", "dnr", "mc", "medical"];
+        const cancelKeywords = ["CANCEL", "ABSENT", "NOSHOW", "DNR", "MC", "MEDICAL"];
         const isCancel = cancelKeywords.some(w => s.rawText.includes(w));
         
         // If person appears twice, prioritize the "Cancelled" entry
@@ -273,7 +284,7 @@ function performJoin(){
         return { 
             ...r.original, 
             "Remark": status, 
-            "_Note": s ? clean(s.flight + " " + s.remarks) : "No Google Record" 
+            "_Note": s ? s.remarks : "No Google Record" 
         };
     });
 
@@ -306,7 +317,7 @@ function renderTable(){
         <div style="margin: 10px 0;">
             <span class="badge green">Onduty: ${ondutyCount}</span>
             <span class="badge yellow">Cancelled/Absent: ${finalData.length - ondutyCount}</span>
-            <span class="badge" style="background:#e2e8f0;">Total: ${finalData.length}</span>
+            <span class="badge" style="background:#e2e8f0; color:#333;">Total: ${finalData.length}</span>
         </div>
     `;
     setStatus("✅ Analysis Complete.", "ok");
