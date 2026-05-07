@@ -49,7 +49,6 @@ th { background:#f1f5f9; position: sticky; top: 0; }
 .status-box { padding:10px 15px; border-radius:6px; margin:10px 0; font-size:13px; border-left: 5px solid transparent; }
 .status-box.info { background:#eff6ff; border-color:#3b82f6; color:#1e40af; }
 .status-box.ok { background:#f0fdf4; border-color:#22c55e; color:#166534; }
-.status-box.warn { background:#fffbeb; border-color:#f59e0b; color:#92400e; }
 .status-box.err { background:#fef2f2; border-color:#ef4444; color:#991b1b; }
 
 .badge { padding:5px 12px; border-radius:15px; font-size:12px; font-weight:bold; margin-right:8px; display: inline-block; }
@@ -60,8 +59,8 @@ th { background:#f1f5f9; position: sticky; top: 0; }
 <body>
 
 <div class="app">
-<div class="center">
-<h2 style="margin:0 0 15px; color:#1e293b;">PBSU T2 Flexi Management2</h2>
+<div class="left">
+<h2 style="margin:0 0 15px; color:#1e293b;">PBSU T2 Flexi Management</h2>
 
 <div class="card">
   <b>1. Upload RMU Finalized Excel</b>
@@ -78,7 +77,6 @@ th { background:#f1f5f9; position: sticky; top: 0; }
     <input type="text" id="tabInput" placeholder="e.g. 07.05.2026" />
     <button onclick="autoDetectTab()">Auto-detect</button>
   </div>
-  <p style="font-size:11px; color:#64748b; margin:8px 0 0;">(Must match the tab name in Google Sheets exactly!)</p>
 </div>
 
 <div style="display:flex; gap:10px;">
@@ -91,7 +89,7 @@ th { background:#f1f5f9; position: sticky; top: 0; }
 
 <table id="table">
   <thead>
-    <tr><th>Remark</th><th>ID</th><th>Name</th><th>Deployment Location</th><th>Flight / Note</th></tr>
+    <tr><th>Remark</th><th>ID</th><th>Name</th><th>Deployment Location</th><th>Flight/Note</th></tr>
   </thead>
   <tbody id="tableBody"></tbody>
 </table>
@@ -121,7 +119,7 @@ const setStatus = (s,type="info") => {
 function detectDateFromName(name){
     let m=name.match(/(\d{6})/);
     if(!m) return "";
-    let d=m[1]; // Format: DDMMYY
+    let d=m[1]; 
     return d.slice(0,2)+"."+d.slice(2,4)+".20"+d.slice(4,6);
 }
 
@@ -190,46 +188,36 @@ function loadGoogleSheetAndAnalyze(){
         clearTimeout(timeout);
         try {
             let rows = res.table.rows || [];
-            if(!rows.length) { setStatus("⚠️ Tab found but it is empty.", "warn"); return; }
-
-            // Find ID Column (Usually Column C / Index 2)
-            let idIdx = 2; 
-            let headerRow = rows[0].c || [];
-            for(let i=0; i < headerRow.length; i++) {
-                if(cellText(headerRow[i]).toUpperCase() === "ID") {
-                    idIdx = i;
-                    break;
-                }
-            }
+            if(!rows.length) { setStatus("⚠️ Tab found but it is empty.", "err"); return; }
 
             sheetData = [];
             
-            // Scan every row
+            // Scan EVERY row to find matches independently of columns
             rows.forEach((r, idx) => {
-                if(idx === 0) return; // Skip headers
+                if(idx === 0) return; // Skip top header row
                 
                 let c = r.c || [];
                 let rowArr = c.map(cell => cellText(cell));
                 let rawStr = rowArr.join(" ").toUpperCase();
                 
-                // If the row is related to CSSU T2
+                // Only process rows that clearly belong to CSSU T2
                 if(rawStr.includes("CSSU T2")) {
                     
-                    // 1. Get ID
-                    let idValue = norm(rowArr[idIdx]);
-                    if(!idValue || idValue.length < 4) {
-                        // Fallback: Check first 4 columns for anything that looks like an ID
-                        for(let i=0; i<4; i++){
-                            let val = norm(rowArr[i]);
-                            if(val.length >= 5) { idValue = val; break; }
+                    let idValue = "";
+                    // Scan the first 5 columns to find an ID (must have at least 4 digits)
+                    for(let i=0; i<5; i++){
+                        let val = norm(rowArr[i]);
+                        if(val.length >= 5 && /\d{4}/.test(val)) { 
+                            idValue = val; 
+                            break; 
                         }
                     }
 
-                    // 2. Extract Shift & Notes by scanning the row array
+                    // Find where the shift info is located
                     let shiftIdx = rowArr.findIndex(txt => txt.toUpperCase().includes("CSSU T2"));
                     let shiftValue = shiftIdx !== -1 ? rowArr[shiftIdx] : "CSSU T2";
                     
-                    // Note is everything to the right of the shift column
+                    // Everything to the right of the shift is a remark/flight
                     let noteValue = "";
                     if(shiftIdx !== -1 && shiftIdx < rowArr.length - 1) {
                         noteValue = rowArr.slice(shiftIdx + 1).filter(v => v !== "").join(" | ");
@@ -246,10 +234,8 @@ function loadGoogleSheetAndAnalyze(){
                 }
             });
 
-            // If 0 matches, show the user EXACTLY what tab Google loaded to prove it's a mismatch
             if(sheetData.length === 0) {
-                let preview = rows.slice(1, 4).map(r => (r.c || []).map(cell => cellText(cell)).join(" | ")).join("\n");
-                alert(`Error: No 'CSSU T2' data found!\n\nIf your Tab Name doesn't perfectly match the Google Sheet, Google defaults to loading the VERY FIRST tab in the document.\n\nHere is a preview of the data it just loaded:\n\n${preview}\n\nPlease fix the Tab Name in Step 2.`);
+                alert(`Error: No 'CSSU T2' data found!\n\nGoogle likely loaded the wrong tab. Check if the date in Step 2 perfectly matches your Google Sheet tab.`);
                 setStatus("❌ Data Mismatch - Wrong Tab?", "err");
                 return;
             }
@@ -272,7 +258,7 @@ function performJoin(){
         const cancelKeywords = ["CANCEL", "ABSENT", "NOSHOW", "DNR", "MC", "MEDICAL"];
         const isCancel = cancelKeywords.some(w => s.rawText.includes(w));
         
-        // If person appears twice, prioritize the "Cancelled" entry
+        // Prioritize cancellations if there are duplicates
         if(!smap.has(s.id) || isCancel) {
             smap.set(s.id, { ...s, isCancel });
         }
@@ -331,7 +317,6 @@ async function exportExcel(){
     const headers = ["External Demand ID","Deployment Location","Deployment Date","Shift Start Time","Shift End Time","TOTAL SHIFT HOURS","Personnel no.","Person First Name","Person Last Name","Remark"];
     ws.addRow(headers);
     
-    // Style header
     ws.getRow(1).eachCell(c => {
         c.font = { bold: true };
         c.fill = { type: 'pattern', pattern:'solid', fgColor:{argb:'FFD9D9D9'} };
@@ -354,7 +339,6 @@ async function exportExcel(){
     link.click();
 }
 
-// Resizable Splitter
 const splitter = document.getElementById("splitter");
 splitter.addEventListener("mousedown", e => {
     document.body.classList.add("resizing");
