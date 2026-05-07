@@ -1,388 +1,608 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>PBSU T2 Flexi Sync</title>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<meta charset="UTF-8">
+<title>PBSU T2 Flexi</title>
 
-    <style>
-        body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f8; color: #333; }
-        .app { display: flex; height: 100vh; overflow: hidden; }
-        
-        /* Left Panel - App Controls */
-        .left { 
-            width: 45%; 
-            min-width: 400px; 
-            padding: 20px; 
-            overflow-y: auto; 
-            background: white; 
-            box-shadow: 2px 0 8px rgba(0,0,0,0.05); 
-            z-index: 10; 
-        }
-        
-        /* Right Panel - Google Sheet Reference */
-        .right { 
-            flex-grow: 1; 
-            background: #f0f2f5; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center; 
-            padding: 40px; 
-        }
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
-        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        
-        /* Drag & Drop Box */
-        .dropbox { 
-            border: 2px dashed #cbd5e1; 
-            background: #f8fafc; 
-            padding: 30px; 
-            text-align: center; 
-            cursor: pointer; 
-            border-radius: 8px; 
-            transition: all 0.2s; 
-        }
-        .dropbox:hover, .dropbox.dragover { border-color: #1a73e8; background: #eff6ff; }
-        .file-name { margin-top: 10px; font-weight: bold; color: #1a73e8; font-size: 14px; }
+<style>
+body { margin:0; font-family:Arial; background:#f4f6f8; }
+.app { display:flex; height:100vh; }
+.left { width:55%; padding:16px; overflow:auto; background:white; }
+.right { width:45%; border-left:1px solid #ccc; }
+iframe { width:100%; height:100%; border:none; }
 
-        /* Buttons */
-        button { 
-            padding: 10px 16px; 
-            margin-top: 10px; 
-            cursor: pointer; 
-            background: #1a73e8; 
-            color: white; 
-            border: none; 
-            border-radius: 6px; 
-            font-weight: 600; 
-            font-size: 14px;
-            transition: 0.2s; 
-        }
-        button:hover { background: #1557b0; }
-        button:disabled { background: #cbd5e1; cursor: not-allowed; }
-        .btn-success { background: #059669; width: 100%; margin-top: 0; }
-        .btn-success:hover { background: #047857; }
+button { padding:10px; margin:5px; cursor:pointer; }
+.card { background:#f8fafc; padding:10px; margin:10px 0; border:1px solid #ddd; }
 
-        /* Status Bar */
-        .status-bar { padding: 12px; border-radius: 6px; background: #f1f5f9; font-size: 13px; margin-top: 15px; border-left: 4px solid #64748b; color: #475569; }
+.dropbox {
+    border:2px dashed #999;
+    background:#fafafa;
+    padding:28px;
+    text-align:center;
+    cursor:pointer;
+    border-radius:10px;
+    margin-top:8px;
+}
+.dropbox.dragover {
+    border-color:#2563eb;
+    background:#dbeafe;
+}
+.file-name {
+    margin-top:8px;
+    font-weight:bold;
+    color:#2563eb;
+}
 
-        /* Data Table */
-        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 15px; }
-        th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; }
-        th { background: #f8fafc; color: #64748b; font-weight: 600; position: sticky; top: 0; }
-        .onduty { border-left: 4px solid #10b981; background: #f0fdf4; }
-        .cancel { border-left: 4px solid #ef4444; background: #fef2f2; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { border:1px solid #ccc; padding:6px; }
 
-        /* Right Panel UI matching your screenshot */
-        .ref-container { max-width: 450px; }
-        .ref-title { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
-        .ref-text { font-size: 15px; line-height: 1.5; margin-bottom: 25px; color: #000; }
-        .btn-open-sheet { 
-            display: inline-block; 
-            padding: 12px 24px; 
-            background: #1a73e8; 
-            color: white; 
-            text-decoration: none; 
-            border-radius: 6px; 
-            font-weight: bold; 
-            font-size: 15px;
-        }
-        .btn-open-sheet:hover { background: #1557b0; }
-        .ref-subtext { font-size: 12px; color: #666; margin-top: 20px; }
-    </style>
+.onduty { background:#d1fae5; }
+.cancel { background:#fff200; }
+</style>
 </head>
+
 <body>
 
 <div class="app">
-    <div class="left">
-        <h2 style="margin-top: 0; color: #1e293b;">PBSU T2 Flexi Sync</h2>
-        
-        <div class="card">
-            <div id="dropbox" class="dropbox" onclick="document.getElementById('rmuFile').click()">
-                <strong style="font-size: 15px;">Drop RMU Excel here</strong><br>
-                <span style="font-size:13px; color:#64748b;">or click to browse</span>
-                <div id="fileName" class="file-name">No file selected</div>
-            </div>
-            <input type="file" id="rmuFile" accept=".xlsx,.xls" style="display:none">
-        </div>
 
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 14px;">Target Date: <strong id="dateDisplay" style="color: #1a73e8;">-</strong></span>
-                <button onclick="loadGoogleSheetAndAnalyze()" id="syncBtn">Sync & Analyze</button>
-            </div>
-            <div id="status" class="status-bar">Waiting for RMU file...</div>
-        </div>
+<div class="left">
 
-        <div style="margin-bottom: 15px;">
-            <button onclick="exportExcel()" id="exportBtn" class="btn-success" disabled>Download Final Excel</button>
-        </div>
+<h2>PBSU T2 Flexi</h2>
 
-        <div id="resultTableContainer" style="overflow-y: auto; max-height: calc(100vh - 350px); border: 1px solid #e2e8f0; border-radius: 6px;">
-            <table id="table">
-                <thead>
-                    <tr>
-                        <th>Remark</th>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Google Note</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody"></tbody>
-            </table>
-        </div>
-    </div>
+<div class="card">
+<b>Upload RMU Initial Excel</b>
 
-    <div class="right">
-        <div class="ref-container">
-            <div class="ref-title">Google Sheet Reference</div>
-            <div class="ref-text">
-                Google prevents editing spreadsheets inside other apps for security. Click the button below to open the duty sheet in a new tab.
-            </div>
-            <a href="https://docs.google.com/spreadsheets/d/1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc/" target="_blank" class="btn-open-sheet">
-                Open Spreadsheet
-            </a>
-            <div class="ref-subtext">
-                Ensure the sheet is set to "Anyone with the link can view" for the sync to work.
-            </div>
-        </div>
-    </div>
+<div id="dropbox" class="dropbox" onclick="document.getElementById('rmuFile').click()">
+    Drop RMU Flexi Roster here<br>
+    or click to choose file
+    <div id="fileName" class="file-name">No file selected</div>
+</div>
+
+<input type="file" id="rmuFile" accept=".xlsx,.xls" style="display:none">
+
+<br>
+<button onclick="loadGoogleSheetAndAnalyze()">1. Load Google Sheet & Analyze</button>
+<button onclick="exportExcel()">2. Export Final Excel</button>
+</div>
+
+<div class="card">
+<div>Detected Date: <span id="date">-</span></div>
+<div>Status: <span id="status">Waiting...</span></div>
+</div>
+
+<table id="table">
+<tr>
+<th>Remark</th>
+<th>Personnel no.</th>
+<th>Name</th>
+<th>Deployment Location</th>
+<th>Google Note</th>
+</tr>
+</table>
+
+</div>
+
+<div class="right">
+<iframe src="https://docs.google.com/spreadsheets/d/1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc/edit?gid=1412520827"></iframe>
+</div>
+
 </div>
 
 <script>
 const SHEET_ID = "1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc";
+
 let rmuData = [];
 let sheetData = [];
 let finalData = [];
-let sheetTabName = "";
+let sheetTab = "";
 
-// 1. Drag & Drop Visuals
 const dropbox = document.getElementById("dropbox");
-dropbox.addEventListener("dragover", e => { e.preventDefault(); dropbox.classList.add("dragover"); });
-dropbox.addEventListener("dragleave", e => { e.preventDefault(); dropbox.classList.remove("dragover"); });
+const fileInput = document.getElementById("rmuFile");
+
+dropbox.addEventListener("dragover", e => {
+    e.preventDefault();
+    dropbox.classList.add("dragover");
+});
+
+dropbox.addEventListener("dragleave", e => {
+    e.preventDefault();
+    dropbox.classList.remove("dragover");
+});
+
 dropbox.addEventListener("drop", e => {
     e.preventDefault();
     dropbox.classList.remove("dragover");
-    if(e.dataTransfer.files[0]) handleFileSelection(e.dataTransfer.files[0]);
-});
-document.getElementById('rmuFile').addEventListener('change', e => {
-    if(e.target.files[0]) handleFileSelection(e.target.files[0]);
+
+    const file = e.dataTransfer.files[0];
+    if(file){
+        handleRMUFile(file);
+    }
 });
 
-// 2. Handle RMU File Upload
-function handleFileSelection(file) {
-    document.getElementById("fileName").innerText = file.name;
-    
-    // Extract date for Google Sheet Tab (e.g., RMU_240526.xlsx -> 24.05.2026)
-    let match = file.name.match(/(\d{6})/);
-    if(match) {
-        let d = match[1];
-        sheetTabName = `${d.slice(0,2)}.${d.slice(2,4)}.20${d.slice(4,6)}`;
-        document.getElementById("dateDisplay").innerText = sheetTabName;
-    } else {
-        updateStatus("⚠️ Warning: Could not detect 6-digit date in filename.");
+fileInput.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if(file){
+        handleRMUFile(file);
+    }
+});
+
+function clean(v){
+    return (v ?? "").toString().replace(/\s+/g, " ").trim();
+}
+
+function norm(v){
+    return clean(v).replace(/\.0$/, "");
+}
+
+function setStatus(s){
+    document.getElementById("status").innerText = s;
+}
+
+function detectDate(name){
+    let m = name.match(/(\d{6})/);
+    if(!m) return "";
+
+    let d = m[1];
+    return d.slice(0,2) + "." + d.slice(2,4) + ".20" + d.slice(4,6);
+}
+
+function cellText(cell){
+    if(!cell) return "";
+    return clean(cell.f ?? cell.v ?? "");
+}
+
+function excelSerialToDate(serial){
+    if(typeof serial !== "number") return clean(serial);
+
+    let utcDays = Math.floor(serial - 25569);
+    let utcValue = utcDays * 86400;
+    let date = new Date(utcValue * 1000);
+
+    let dd = String(date.getUTCDate()).padStart(2, "0");
+    let mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    let yyyy = date.getUTCFullYear();
+
+    return `${dd}/${mm}/${yyyy}`;
+}
+
+function excelSerialToTime(serial){
+    if(typeof serial !== "number") return clean(serial);
+
+    let totalMinutes = Math.round(serial * 24 * 60);
+    totalMinutes = totalMinutes % (24 * 60);
+
+    let hh = Math.floor(totalMinutes / 60);
+    let mm = totalMinutes % 60;
+
+    return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+
+function excelSerialToHours(serial){
+    if(typeof serial !== "number") return clean(serial);
+
+    let totalMinutes = Math.round(serial * 24 * 60);
+
+    let hh = Math.floor(totalMinutes / 60);
+    let mm = totalMinutes % 60;
+
+    return hh + ":" + String(mm).padStart(2, "0");
+}
+
+function getCellValue(ws, row, col){
+    let addr = XLSX.utils.encode_cell({r: row, c: col});
+    return ws[addr] ? ws[addr].v : "";
+}
+
+function parseTimeFromShift(shift){
+    let m = clean(shift).match(/(\d{4})\s*[-–]\s*(\d{4})/);
+
+    if(!m){
+        return { start:"", end:"", hours:"" };
     }
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, {type: 'array'});
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
-        
-        rmuData = [];
-        // Loop through rows (skip header row 0)
-        for(let i = 1; i < rows.length; i++) {
-            let row = rows[i];
-            let pNo = (row[6] || "").toString().trim();
-            let location = (row[1] || "").toString();
-            
-            // Only grab rows that have an ID and are for CSSU T2
-            if(pNo && location.includes("CSSU T2")) {
+    let startRaw = m[1];
+    let endRaw = m[2];
+
+    let start = startRaw.slice(0,2) + ":" + startRaw.slice(2,4);
+    let end = endRaw.slice(0,2) + ":" + endRaw.slice(2,4);
+
+    let sh = parseInt(startRaw.slice(0,2));
+    let sm = parseInt(startRaw.slice(2,4));
+    let eh = parseInt(endRaw.slice(0,2));
+    let em = parseInt(endRaw.slice(2,4));
+
+    let startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+
+    if(endMin <= startMin){
+        endMin += 24 * 60;
+    }
+
+    let diff = endMin - startMin;
+    let hh = Math.floor(diff / 60);
+    let mm = diff % 60;
+
+    return {
+        start,
+        end,
+        hours: hh + ":" + String(mm).padStart(2, "0")
+    };
+}
+
+function handleRMUFile(file){
+    if(!file.name.match(/\.(xlsx|xls)$/i)){
+        alert("Please upload Excel file only");
+        return;
+    }
+
+    document.getElementById("fileName").innerText = file.name;
+
+    sheetTab = detectDate(file.name);
+    document.getElementById("date").innerText = sheetTab || "Cannot detect";
+
+    if(!sheetTab){
+        setStatus("Cannot detect date from RMU filename. Example filename should contain 240426.");
+        return;
+    }
+
+    setStatus("Reading RMU file...");
+
+    let reader = new FileReader();
+
+    reader.onload = e => {
+        try{
+            let wb = XLSX.read(new Uint8Array(e.target.result), {
+                type: "array",
+                cellDates: false
+            });
+
+            let ws = wb.Sheets[wb.SheetNames[0]];
+            let range = XLSX.utils.decode_range(ws["!ref"]);
+
+            rmuData = [];
+            sheetData = [];
+            finalData = [];
+            render();
+
+            for(let r = range.s.r + 1; r <= range.e.r; r++){
+                let externalDemandId = clean(getCellValue(ws, r, 0));
+                let deploymentLocation = clean(getCellValue(ws, r, 1));
+                let deploymentDateRaw = getCellValue(ws, r, 2);
+                let shiftStartRaw = getCellValue(ws, r, 3);
+                let shiftEndRaw = getCellValue(ws, r, 4);
+                let totalHoursRaw = getCellValue(ws, r, 5);
+                let personnelNo = norm(getCellValue(ws, r, 6));
+                let firstName = clean(getCellValue(ws, r, 7));
+                let lastName = clean(getCellValue(ws, r, 8));
+
+                if(!deploymentLocation.includes("CSSU T2")) continue;
+                if(!personnelNo) continue;
+
                 rmuData.push({
-                    id: pNo.replace(/\.0$/, ""), // Remove decimal if Excel adds it
-                    original: row
+                    id: personnelNo,
+                    original: {
+                        "External Demand ID": externalDemandId,
+                        "Deployment Location": deploymentLocation,
+                        "Deployment Date": excelSerialToDate(deploymentDateRaw),
+                        "Shift Start Time": excelSerialToTime(shiftStartRaw),
+                        "Shift End Time": excelSerialToTime(shiftEndRaw),
+                        "TOTAL SHIFT HOURS": excelSerialToHours(totalHoursRaw),
+                        "Personnel no.": personnelNo,
+                        "Person First Name": firstName,
+                        "Person Last Name": lastName
+                    }
                 });
             }
+
+            setStatus("RMU auto-loaded: " + rmuData.length + " CSSU T2 officers. Now click Load Google Sheet & Analyze.");
+
+        }catch(err){
+            console.error(err);
+            setStatus("RMU read error");
         }
-        updateStatus(`✅ Loaded ${rmuData.length} CSSU T2 officers from RMU Excel.`);
     };
+
     reader.readAsArrayBuffer(file);
 }
 
-// 3. Fetch Google Sheet Data
-function loadGoogleSheetAndAnalyze() {
-    if(!rmuData.length) return alert("Please upload the RMU file first.");
-    if(!sheetTabName) return alert("Date not detected. Rename your RMU file to include a date like 240526.");
+function loadGoogleSheetAndAnalyze(){
+    if(!sheetTab){
+        alert("Upload RMU first");
+        return;
+    }
 
-    updateStatus(`⏳ Fetching data from Google Sheet Tab: ${sheetTabName}...`);
-    
-    const callbackName = "jsonp_cb_" + Math.round(Math.random() * 1000000);
+    if(!rmuData.length){
+        alert("RMU file not loaded properly");
+        return;
+    }
 
-    window[callbackName] = function(data) {
-        // Error handling if tab doesn't exist
-        if (!data || !data.table || !data.table.rows) {
-            updateStatus(`❌ Error: Could not find tab '${sheetTabName}'. Is the date correct?`);
-            return;
-        }
+    setStatus("Loading Google Sheet...");
 
-        try {
-            const rows = data.table.rows;
+    const cb = "cb_" + Date.now();
+
+    window[cb] = function(res){
+        try{
+            let rows = res.table.rows || [];
             sheetData = [];
-            
-            // Map the data (Assuming Col C (idx 2) is ID, Col G (idx 6) is Flight, Col J (idx 9) is Remarks)
+
             rows.forEach(r => {
-                const c = r.c || [];
-                const id = c[2] ? c[2].v.toString().trim().replace(/\.0$/, "") : null;
-                
-                if(id) {
-                    const flight = c[6] ? c[6].v : "";
-                    const remarks = c[9] ? c[9].v : "";
-                    sheetData.push({ 
-                        id: id, 
-                        note: `${flight} ${remarks}`.trim() 
+                let c = r.c || [];
+
+                let id = norm(cellText(c[2]));
+                let first = cellText(c[3]);
+                let last = cellText(c[4]);
+                let shift = cellText(c[5]);
+                let flight = cellText(c[6]);
+                let updatedBy = cellText(c[7]);
+                let postal = cellText(c[8]);
+                let remarks = cellText(c[9]);
+
+                if(id && shift.includes("CSSU T2")){
+                    sheetData.push({
+                        id,
+                        first,
+                        last,
+                        shift,
+                        flight,
+                        updatedBy,
+                        postal,
+                        remarks,
+                        rawText: [
+                            cellText(c[0]),
+                            cellText(c[1]),
+                            cellText(c[2]),
+                            cellText(c[3]),
+                            cellText(c[4]),
+                            cellText(c[5]),
+                            cellText(c[6]),
+                            cellText(c[7]),
+                            cellText(c[8]),
+                            cellText(c[9])
+                        ].join(" ")
                     });
                 }
             });
-            
-            updateStatus(`✅ Synced ${sheetData.length} records from Google Sheets. Running comparison...`);
-            runAnalysis();
-        } catch(err) {
-            console.error(err);
-            updateStatus("❌ Error: Failed to parse Google Sheet data.");
+
+            setStatus("Google Sheet Loaded: " + sheetData.length + " CSSU T2 officers. Analyzing...");
+            analyze();
+
+        }catch(e){
+            console.error(e);
+            setStatus("Google Sheet parse error");
         }
     };
 
-    // Create the script tag to call Google Visualization API
-    const script = document.createElement('script');
-    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${callbackName}&sheet=${encodeURIComponent(sheetTabName)}`;
-    script.onerror = function() {
-        updateStatus("❌ Error: Network issue or Sheet is not shared properly.");
-    };
+    let script = document.createElement("script");
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${cb}&sheet=${encodeURIComponent(sheetTab)}`;
     document.body.appendChild(script);
 }
 
-// 4. Logic: Compare RMU vs Google
-function runAnalysis() {
-    finalData = [];
-    const cancelKeywords = ["cancel", "absent", "mc", "no show", "noshow", "dnr", "medical"];
-    
-    rmuData.forEach(officer => {
-        // Look for the officer in the Google Sheet data
-        const match = sheetData.find(s => s.id === officer.id);
-        let remark = "Cancelled"; // Default if they aren't on the Google Sheet at all
-        let note = "";
+function isCancelled(s){
+    let text = (
+        (s.flight || "") + " " +
+        (s.remarks || "") + " " +
+        (s.postal || "") + " " +
+        (s.updatedBy || "") + " " +
+        (s.rawText || "")
+    ).toLowerCase();
 
-        if(match) {
-            note = match.note;
-            // Check if their google note contains cancellation words
-            const isCancelled = cancelKeywords.some(word => note.toLowerCase().includes(word));
-            remark = isCancelled ? "Cancelled" : "Onduty";
+    const cancelWords = [
+        "cancel",
+        "cancelled",
+        "canceled",
+        "cancel booking",
+        "cancelled booking",
+        "canceled booking",
+        "absent",
+        "absence",
+        "no show",
+        "noshow",
+        "dnr",
+        "did not report",
+        "didnt report",
+        "didn't report",
+        "mc",
+        "medical",
+        "medical leave"
+    ];
+
+    return cancelWords.some(w => text.includes(w));
+}
+
+function analyze(){
+    if(!rmuData.length){
+        alert("Upload RMU first");
+        return;
+    }
+
+    if(!sheetData.length){
+        alert("Load Google Sheet first");
+        return;
+    }
+
+    let rmap = new Map();
+    let smap = new Map();
+
+    rmuData.forEach(r => rmap.set(r.id, r));
+
+    sheetData.forEach(s => {
+        if(!smap.has(s.id)){
+            smap.set(s.id, s);
+        }else{
+            let existing = smap.get(s.id);
+
+            if(isCancelled(s)){
+                smap.set(s.id, s);
+            }else if(!isCancelled(existing)){
+                smap.set(s.id, existing);
+            }
+        }
+    });
+
+    finalData = [];
+
+    rmuData.forEach(r => {
+        let s = smap.get(r.id);
+        let remark = "Cancelled";
+        let googleNote = "";
+
+        if(s){
+            remark = isCancelled(s) ? "Cancelled" : "Onduty";
+            googleNote = clean((s.flight || "") + " " + (s.remarks || ""));
         }
 
         finalData.push({
-            data: officer.original,
-            remark: remark,
-            note: note
+            ...r.original,
+            "Remark": remark,
+            "_Google Note": googleNote
         });
     });
 
-    renderTable();
-    document.getElementById("exportBtn").disabled = false;
-    updateStatus(`🚀 Analysis Complete! Ready for Export. (${finalData.length} total rows)`);
-}
+    sheetData.forEach(s => {
+        if(!rmap.has(s.id)){
+            let time = parseTimeFromShift(s.shift);
 
-// 5. Render to HTML Table
-function renderTable() {
-    const tbody = document.getElementById("tableBody");
-    tbody.innerHTML = "";
-    finalData.forEach(item => {
-        const tr = document.createElement("tr");
-        tr.className = item.remark === "Onduty" ? "onduty" : "cancel";
-        
-        // item.data[6] is Personnel No, item.data[7] is First Name, item.data[8] is Last Name
-        tr.innerHTML = `
-            <td><strong>${item.remark}</strong></td>
-            <td>${item.data[6] || ''}</td>
-            <td>${item.data[7] || ''} ${item.data[8] || ''}</td>
-            <td style="color:#64748b; font-style:italic;">${item.note || '-'}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-// 6. Export to Final Excel File
-async function exportExcel() {
-    if(!finalData.length) return;
-    
-    const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet("Final Report");
-    
-    // Define Headers
-    ws.columns = [
-        {header: "External Demand ID", width: 20},
-        {header: "Deployment Location", width: 25},
-        {header: "Deployment Date", width: 15},
-        {header: "Shift Start", width: 12},
-        {header: "Shift End", width: 12},
-        {header: "Total Hours", width: 12},
-        {header: "Personnel No.", width: 15},
-        {header: "First Name", width: 20},
-        {header: "Last Name", width: 20},
-        {header: "Remark", width: 15},
-        {header: "Google Note", width: 35}
-    ];
-
-    // Style the Header Row
-    ws.getRow(1).font = { bold: true };
-    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-
-    // Add Data Rows
-    finalData.forEach(item => {
-        const row = ws.addRow([
-            item.data[0], // External Demand ID
-            item.data[1], // Deployment Location
-            item.data[2], // Deployment Date
-            item.data[3], // Shift Start Time
-            item.data[4], // Shift End Time
-            item.data[5], // TOTAL SHIFT HOURS
-            item.data[6], // Personnel no.
-            item.data[7], // Person First Name
-            item.data[8], // Person Last Name
-            item.remark,  // Remark (Onduty/Cancelled)
-            item.note     // The note from Google Sheets
-        ]);
-
-        // Highlight Cancelled rows in yellow
-        if(item.remark === "Cancelled") {
-            row.getCell(10).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+            finalData.push({
+                "External Demand ID": "",
+                "Deployment Location": s.shift,
+                "Deployment Date": sheetTab.replaceAll(".", "/"),
+                "Shift Start Time": time.start,
+                "Shift End Time": time.end,
+                "TOTAL SHIFT HOURS": time.hours,
+                "Personnel no.": s.id,
+                "Person First Name": s.first,
+                "Person Last Name": s.last,
+                "Remark": isCancelled(s) ? "Cancelled" : "Onduty",
+                "_Google Note": clean((s.flight || "") + " " + (s.remarks || ""))
+            });
         }
     });
 
-    // Add borders to all cells
-    ws.eachRow(function(row, rowNumber) {
-        row.eachCell(function(cell, colNumber) {
-            cell.border = {
-                top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'}
-            };
-        });
-    });
-
-    // Generate and Download File
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Final_Report_${sheetTabName}.xlsx`;
-    a.click();
+    render();
+    setStatus("Analysis Done. Final rows: " + finalData.length);
 }
 
-function updateStatus(msg) {
-    document.getElementById("status").innerText = msg;
+function render(){
+    let table = document.getElementById("table");
+
+    table.innerHTML = `
+    <tr>
+        <th>Remark</th>
+        <th>Personnel no.</th>
+        <th>Name</th>
+        <th>Deployment Location</th>
+        <th>Google Note</th>
+    </tr>`;
+
+    finalData.forEach(r => {
+        let cls = r["Remark"] === "Onduty" ? "onduty" : "cancel";
+        let name = clean(r["Person First Name"]) + " " + clean(r["Person Last Name"]);
+
+        table.innerHTML += `
+        <tr class="${cls}">
+            <td>${r["Remark"]}</td>
+            <td>${r["Personnel no."]}</td>
+            <td>${name}</td>
+            <td>${r["Deployment Location"]}</td>
+            <td>${r["_Google Note"] || ""}</td>
+        </tr>`;
+    });
+}
+
+async function exportExcel(){
+    if(!finalData.length){
+        alert("Analyze first");
+        return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("PBSU T2");
+
+    const headers = [
+        "External Demand ID",
+        "Deployment Location",
+        "Deployment Date",
+        "Shift Start Time",
+        "Shift End Time",
+        "TOTAL SHIFT HOURS",
+        "Personnel no.",
+        "Person First Name",
+        "Person Last Name",
+        "Remark"
+    ];
+
+    worksheet.addRow(headers);
+
+    worksheet.getRow(1).eachCell(cell => {
+        cell.font = { bold: true };
+        cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFD9D9D9" }
+        };
+        cell.border = {
+            top: {style:"thin"},
+            left: {style:"thin"},
+            bottom: {style:"thin"},
+            right: {style:"thin"}
+        };
+    });
+
+    finalData.forEach(r => {
+        const row = worksheet.addRow([
+            r["External Demand ID"] || "",
+            r["Deployment Location"] || "",
+            r["Deployment Date"] || "",
+            r["Shift Start Time"] || "",
+            r["Shift End Time"] || "",
+            r["TOTAL SHIFT HOURS"] || "",
+            r["Personnel no."] || "",
+            r["Person First Name"] || "",
+            r["Person Last Name"] || "",
+            r["Remark"] || ""
+        ]);
+
+        row.eachCell(cell => {
+            cell.border = {
+                top: {style:"thin"},
+                left: {style:"thin"},
+                bottom: {style:"thin"},
+                right: {style:"thin"}
+            };
+        });
+
+        if(r["Remark"] === "Cancelled"){
+            row.getCell(10).fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFFFF00" }
+            };
+        }
+    });
+
+    worksheet.columns.forEach(column => {
+        let maxLength = 12;
+        column.eachCell({ includeEmpty: true }, cell => {
+            let value = cell.value ? cell.value.toString() : "";
+            maxLength = Math.max(maxLength, value.length);
+        });
+        column.width = Math.min(maxLength + 2, 40);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `RMU_CSSU_T2_Final_${sheetTab}.xlsx`;
+    link.click();
+
+    URL.revokeObjectURL(link.href);
 }
 </script>
 
