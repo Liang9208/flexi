@@ -2,62 +2,134 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PBSU T2 Flexi Pro</title>
+    <title>PBSU T2 Flexi Sync</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
     <style>
-        body { margin:0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#f0f2f5; color: #333; }
-        .app { display:flex; height:100vh; }
-        .left { width:40%; min-width:400px; padding:20px; overflow-auto; background:white; box-shadow: 2px 0 5px rgba(0,0,0,0.05); z-index: 10; }
-        .right { flex-grow: 1; background:#e4e6e9; display:flex; align-items:center; justify-content:center; flex-direction: column; text-align: center; }
+        body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f8; color: #333; }
+        .app { display: flex; height: 100vh; overflow: hidden; }
         
-        .card { background:#fff; border:1px solid #ddd; border-radius:12px; padding:20px; margin-bottom:20px; }
-        .dropbox { border:2px dashed #cbd5e1; background:#f8fafc; padding:40px; text-align:center; cursor:pointer; border-radius:12px; transition: 0.3s; }
-        .dropbox:hover, .dropbox.dragover { border-color:#1a73e8; background:#eff6ff; }
+        /* Left Panel - App Controls */
+        .left { 
+            width: 45%; 
+            min-width: 400px; 
+            padding: 20px; 
+            overflow-y: auto; 
+            background: white; 
+            box-shadow: 2px 0 8px rgba(0,0,0,0.05); 
+            z-index: 10; 
+        }
         
-        button { padding:12px 20px; margin:5px; cursor:pointer; background:#1a73e8; color:white; border:none; border-radius:6px; font-weight:600; transition: 0.2s; }
-        button:hover { background:#1557b0; transform: translateY(-1px); }
-        button:disabled { background:#ccc; cursor:not-allowed; }
+        /* Right Panel - Google Sheet Reference */
+        .right { 
+            flex-grow: 1; 
+            background: #f0f2f5; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center; 
+            padding: 40px; 
+        }
+
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         
-        table { width:100%; border-collapse:collapse; margin-top:15px; font-size:13px; }
-        th, td { border-bottom:1px solid #eee; padding:12px 8px; text-align:left; }
-        th { background:#f8fafc; color:#64748b; text-transform: uppercase; font-size:11px; }
+        /* Drag & Drop Box */
+        .dropbox { 
+            border: 2px dashed #cbd5e1; 
+            background: #f8fafc; 
+            padding: 30px; 
+            text-align: center; 
+            cursor: pointer; 
+            border-radius: 8px; 
+            transition: all 0.2s; 
+        }
+        .dropbox:hover, .dropbox.dragover { border-color: #1a73e8; background: #eff6ff; }
+        .file-name { margin-top: 10px; font-weight: bold; color: #1a73e8; font-size: 14px; }
+
+        /* Buttons */
+        button { 
+            padding: 10px 16px; 
+            margin-top: 10px; 
+            cursor: pointer; 
+            background: #1a73e8; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            font-weight: 600; 
+            font-size: 14px;
+            transition: 0.2s; 
+        }
+        button:hover { background: #1557b0; }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .btn-success { background: #059669; width: 100%; margin-top: 0; }
+        .btn-success:hover { background: #047857; }
+
+        /* Status Bar */
+        .status-bar { padding: 12px; border-radius: 6px; background: #f1f5f9; font-size: 13px; margin-top: 15px; border-left: 4px solid #64748b; color: #475569; }
+
+        /* Data Table */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 15px; }
+        th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; }
+        th { background: #f8fafc; color: #64748b; font-weight: 600; position: sticky; top: 0; }
         .onduty { border-left: 4px solid #10b981; background: #f0fdf4; }
         .cancel { border-left: 4px solid #ef4444; background: #fef2f2; }
-        
-        .status-bar { padding:10px; border-radius:6px; background:#f1f5f9; font-size:13px; margin-top:10px; border-left: 4px solid #64748b; }
-        .btn-link { display:inline-block; padding:12px 24px; background:#1a73e8; color:white; text-decoration:none; border-radius:6px; font-weight:600; margin-top:20px; }
+
+        /* Right Panel UI matching your screenshot */
+        .ref-container { max-width: 450px; }
+        .ref-title { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
+        .ref-text { font-size: 15px; line-height: 1.5; margin-bottom: 25px; color: #000; }
+        .btn-open-sheet { 
+            display: inline-block; 
+            padding: 12px 24px; 
+            background: #1a73e8; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 6px; 
+            font-weight: bold; 
+            font-size: 15px;
+        }
+        .btn-open-sheet:hover { background: #1557b0; }
+        .ref-subtext { font-size: 12px; color: #666; margin-top: 20px; }
     </style>
 </head>
 <body>
 
 <div class="app">
     <div class="left">
-        <h2 style="margin-top:0;">PBSU T2 Flexi Sync</h2>
+        <h2 style="margin-top: 0; color: #1e293b;">PBSU T2 Flexi Sync</h2>
         
         <div class="card">
             <div id="dropbox" class="dropbox" onclick="document.getElementById('rmuFile').click()">
-                <strong>Drop RMU Excel here</strong><br>
-                <span style="font-size:12px; color:#64748b;">or click to browse</span>
-                <div id="fileName" style="margin-top:10px; font-weight:bold; color:#1a73e8;">No file selected</div>
+                <strong style="font-size: 15px;">Drop RMU Excel here</strong><br>
+                <span style="font-size:13px; color:#64748b;">or click to browse</span>
+                <div id="fileName" class="file-name">No file selected</div>
             </div>
             <input type="file" id="rmuFile" accept=".xlsx,.xls" style="display:none">
         </div>
 
         <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span>Target Date: <strong id="dateDisplay">-</strong></span>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 14px;">Target Date: <strong id="dateDisplay" style="color: #1a73e8;">-</strong></span>
                 <button onclick="loadGoogleSheetAndAnalyze()" id="syncBtn">Sync & Analyze</button>
             </div>
             <div id="status" class="status-bar">Waiting for RMU file...</div>
         </div>
 
-        <button onclick="exportExcel()" id="exportBtn" style="width:100%; background:#059669;" disabled>Download Final Excel</button>
+        <div style="margin-bottom: 15px;">
+            <button onclick="exportExcel()" id="exportBtn" class="btn-success" disabled>Download Final Excel</button>
+        </div>
 
-        <div id="resultTableContainer" style="overflow:auto; max-height:400px;">
+        <div id="resultTableContainer" style="overflow-y: auto; max-height: calc(100vh - 350px); border: 1px solid #e2e8f0; border-radius: 6px;">
             <table id="table">
                 <thead>
-                    <tr><th>Remark</th><th>ID</th><th>Name</th><th>Note</th></tr>
+                    <tr>
+                        <th>Remark</th>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Google Note</th>
+                    </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
             </table>
@@ -65,11 +137,17 @@
     </div>
 
     <div class="right">
-        <div style="background:white; padding:40px; border-radius:20px; box-shadow:0 10px 25px rgba(0,0,0,0.1); max-width:400px;">
-            <img src="https://www.gstatic.com/images/branding/product/2x/sheets_2020q4_48dp.png" width="48" alt="Sheets">
-            <h3>Reference Duty Sheet</h3>
-            <p style="color:#64748b;">Open the Google Sheet to verify remarks or flight details manually.</p>
-            <a href="https://docs.google.com/spreadsheets/d/1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc/" target="_blank" class="btn-link">Open Spreadsheet</a>
+        <div class="ref-container">
+            <div class="ref-title">Google Sheet Reference</div>
+            <div class="ref-text">
+                Google prevents editing spreadsheets inside other apps for security. Click the button below to open the duty sheet in a new tab.
+            </div>
+            <a href="https://docs.google.com/spreadsheets/d/1i_OR3qFI6lFryycpmuwg1M5mwxxKNRXNZS77MbOp5qc/" target="_blank" class="btn-open-sheet">
+                Open Spreadsheet
+            </a>
+            <div class="ref-subtext">
+                Ensure the sheet is set to "Anyone with the link can view" for the sync to work.
+            </div>
         </div>
     </div>
 </div>
@@ -81,19 +159,31 @@ let sheetData = [];
 let finalData = [];
 let sheetTabName = "";
 
-// 1. Handle RMU File Upload
-document.getElementById('rmuFile').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if(!file) return;
-    
+// 1. Drag & Drop Visuals
+const dropbox = document.getElementById("dropbox");
+dropbox.addEventListener("dragover", e => { e.preventDefault(); dropbox.classList.add("dragover"); });
+dropbox.addEventListener("dragleave", e => { e.preventDefault(); dropbox.classList.remove("dragover"); });
+dropbox.addEventListener("drop", e => {
+    e.preventDefault();
+    dropbox.classList.remove("dragover");
+    if(e.dataTransfer.files[0]) handleFileSelection(e.dataTransfer.files[0]);
+});
+document.getElementById('rmuFile').addEventListener('change', e => {
+    if(e.target.files[0]) handleFileSelection(e.target.files[0]);
+});
+
+// 2. Handle RMU File Upload
+function handleFileSelection(file) {
     document.getElementById("fileName").innerText = file.name;
     
-    // Extract date for Tab (e.g., 240526 -> 24.05.2026)
-    let m = file.name.match(/(\d{6})/);
-    if(m) {
-        let d = m[1];
+    // Extract date for Google Sheet Tab (e.g., RMU_240526.xlsx -> 24.05.2026)
+    let match = file.name.match(/(\d{6})/);
+    if(match) {
+        let d = match[1];
         sheetTabName = `${d.slice(0,2)}.${d.slice(2,4)}.20${d.slice(4,6)}`;
         document.getElementById("dateDisplay").innerText = sheetTabName;
+    } else {
+        updateStatus("⚠️ Warning: Could not detect 6-digit date in filename.");
     }
 
     const reader = new FileReader();
@@ -104,73 +194,91 @@ document.getElementById('rmuFile').addEventListener('change', function(e) {
         const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
         
         rmuData = [];
-        rows.forEach((row, i) => {
-            if(i === 0) return; // Skip header
+        // Loop through rows (skip header row 0)
+        for(let i = 1; i < rows.length; i++) {
+            let row = rows[i];
             let pNo = (row[6] || "").toString().trim();
             let location = (row[1] || "").toString();
             
+            // Only grab rows that have an ID and are for CSSU T2
             if(pNo && location.includes("CSSU T2")) {
                 rmuData.push({
-                    id: pNo.replace(/\.0$/, ""),
+                    id: pNo.replace(/\.0$/, ""), // Remove decimal if Excel adds it
                     original: row
                 });
             }
-        });
-        updateStatus(`Loaded ${rmuData.length} CSSU T2 officers from RMU.`);
+        }
+        updateStatus(`✅ Loaded ${rmuData.length} CSSU T2 officers from RMU Excel.`);
     };
     reader.readAsArrayBuffer(file);
-});
+}
 
-// 2. Fetch Google Sheet Data
+// 3. Fetch Google Sheet Data
 function loadGoogleSheetAndAnalyze() {
-    if(!rmuData.length) return alert("Upload RMU file first!");
-    if(!sheetTabName) return alert("Date not detected in filename.");
+    if(!rmuData.length) return alert("Please upload the RMU file first.");
+    if(!sheetTabName) return alert("Date not detected. Rename your RMU file to include a date like 240526.");
 
-    updateStatus("Connecting to Google Sheets...");
+    updateStatus(`⏳ Fetching data from Google Sheet Tab: ${sheetTabName}...`);
+    
     const callbackName = "jsonp_cb_" + Math.round(Math.random() * 1000000);
 
     window[callbackName] = function(data) {
+        // Error handling if tab doesn't exist
+        if (!data || !data.table || !data.table.rows) {
+            updateStatus(`❌ Error: Could not find tab '${sheetTabName}'. Is the date correct?`);
+            return;
+        }
+
         try {
             const rows = data.table.rows;
             sheetData = [];
             
-            // Intelligent Column Mapping
-            // We assume: Col 2 (C) = ID, Col 9 (J) = Remarks
+            // Map the data (Assuming Col C (idx 2) is ID, Col G (idx 6) is Flight, Col J (idx 9) is Remarks)
             rows.forEach(r => {
                 const c = r.c || [];
                 const id = c[2] ? c[2].v.toString().trim().replace(/\.0$/, "") : null;
+                
                 if(id) {
                     const flight = c[6] ? c[6].v : "";
                     const remarks = c[9] ? c[9].v : "";
-                    sheetData.push({ id, note: `${flight} ${remarks}`.trim() });
+                    sheetData.push({ 
+                        id: id, 
+                        note: `${flight} ${remarks}`.trim() 
+                    });
                 }
             });
             
-            updateStatus(`Synced ${sheetData.length} records. Comparing...`);
+            updateStatus(`✅ Synced ${sheetData.length} records from Google Sheets. Running comparison...`);
             runAnalysis();
         } catch(err) {
             console.error(err);
-            updateStatus("Error: Could not parse sheet. Check tab name.");
+            updateStatus("❌ Error: Failed to parse Google Sheet data.");
         }
     };
 
+    // Create the script tag to call Google Visualization API
     const script = document.createElement('script');
     script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${callbackName}&sheet=${encodeURIComponent(sheetTabName)}`;
+    script.onerror = function() {
+        updateStatus("❌ Error: Network issue or Sheet is not shared properly.");
+    };
     document.body.appendChild(script);
 }
 
-// 3. Logic: Compare RMU vs Google
+// 4. Logic: Compare RMU vs Google
 function runAnalysis() {
     finalData = [];
-    const cancelKeywords = ["cancel", "absent", "mc", "no show", "dnr", "medical"];
+    const cancelKeywords = ["cancel", "absent", "mc", "no show", "noshow", "dnr", "medical"];
     
     rmuData.forEach(officer => {
+        // Look for the officer in the Google Sheet data
         const match = sheetData.find(s => s.id === officer.id);
-        let remark = "Cancelled"; // Default if not found in google sheet
+        let remark = "Cancelled"; // Default if they aren't on the Google Sheet at all
         let note = "";
 
         if(match) {
             note = match.note;
+            // Check if their google note contains cancellation words
             const isCancelled = cancelKeywords.some(word => note.toLowerCase().includes(word));
             remark = isCancelled ? "Cancelled" : "Onduty";
         }
@@ -184,47 +292,86 @@ function runAnalysis() {
 
     renderTable();
     document.getElementById("exportBtn").disabled = false;
-    updateStatus("Analysis Complete!");
+    updateStatus(`🚀 Analysis Complete! Ready for Export. (${finalData.length} total rows)`);
 }
 
+// 5. Render to HTML Table
 function renderTable() {
     const tbody = document.getElementById("tableBody");
     tbody.innerHTML = "";
     finalData.forEach(item => {
         const tr = document.createElement("tr");
         tr.className = item.remark === "Onduty" ? "onduty" : "cancel";
+        
+        // item.data[6] is Personnel No, item.data[7] is First Name, item.data[8] is Last Name
         tr.innerHTML = `
             <td><strong>${item.remark}</strong></td>
-            <td>${item.data[6]}</td>
-            <td>${item.data[7]} ${item.data[8]}</td>
+            <td>${item.data[6] || ''}</td>
+            <td>${item.data[7] || ''} ${item.data[8] || ''}</td>
             <td style="color:#64748b; font-style:italic;">${item.note || '-'}</td>
         `;
         tbody.appendChild(tr);
     });
 }
 
+// 6. Export to Final Excel File
 async function exportExcel() {
-    const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet("Final CSSU Report");
+    if(!finalData.length) return;
     
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet("Final Report");
+    
+    // Define Headers
     ws.columns = [
+        {header: "External Demand ID", width: 20},
         {header: "Deployment Location", width: 25},
+        {header: "Deployment Date", width: 15},
+        {header: "Shift Start", width: 12},
+        {header: "Shift End", width: 12},
+        {header: "Total Hours", width: 12},
         {header: "Personnel No.", width: 15},
-        {header: "First Name", width: 15},
-        {header: "Last Name", width: 15},
+        {header: "First Name", width: 20},
+        {header: "Last Name", width: 20},
         {header: "Remark", width: 15},
-        {header: "Google Note", width: 30}
+        {header: "Google Note", width: 35}
     ];
 
+    // Style the Header Row
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+    // Add Data Rows
     finalData.forEach(item => {
         const row = ws.addRow([
-            item.data[1], item.data[6], item.data[7], item.data[8], item.remark, item.note
+            item.data[0], // External Demand ID
+            item.data[1], // Deployment Location
+            item.data[2], // Deployment Date
+            item.data[3], // Shift Start Time
+            item.data[4], // Shift End Time
+            item.data[5], // TOTAL SHIFT HOURS
+            item.data[6], // Personnel no.
+            item.data[7], // Person First Name
+            item.data[8], // Person Last Name
+            item.remark,  // Remark (Onduty/Cancelled)
+            item.note     // The note from Google Sheets
         ]);
+
+        // Highlight Cancelled rows in yellow
         if(item.remark === "Cancelled") {
-            row.getCell(5).fill = { type: 'pattern', pattern:'solid', fgColor:{argb:'FFFFF200'} };
+            row.getCell(10).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
         }
     });
 
+    // Add borders to all cells
+    ws.eachRow(function(row, rowNumber) {
+        row.eachCell(function(cell, colNumber) {
+            cell.border = {
+                top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'}
+            };
+        });
+    });
+
+    // Generate and Download File
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url = URL.createObjectURL(blob);
