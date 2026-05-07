@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>PBSU T2 Flexi Check</title>
+<title>CSSU T2 Cancelled Officer Checker - Google Sheet Live v14</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -37,13 +37,26 @@
   table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #eef2f7;padding:10px;vertical-align:top;text-align:left}th{background:#f8fafc;font-size:12px;color:#475569;position:sticky;top:0;z-index:1}tbody tr:hover{background:#f8fafc}
   .pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}.pill.red{background:#fee2e2;color:#991b1b}.pill.green{background:#dcfce7;color:#166534}.pill.amber{background:#fef3c7;color:#92400e}.pill.blue{background:#dbeafe;color:#1e40af}.pill.gray{background:#e5e7eb;color:#374151}
   .hide{display:none!important}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.note{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:14px;padding:12px 14px;font-size:13px;margin-top:10px}
-  @media(max-width:900px){.grid,.settings,.summary{grid-template-columns:1fr}.hero h1{font-size:22px}body{padding:12px}}
+
+  .appShell{display:grid;grid-template-columns:minmax(620px,58%) 12px minmax(420px,42%);gap:0;align-items:start;max-width:1880px;margin:0 auto}
+  .leftPane{min-width:0;padding-right:8px}.rightPane{position:sticky;top:14px;height:calc(100vh - 28px);min-height:640px;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 8px 22px rgba(15,23,42,.06);display:flex;flex-direction:column;min-width:0}
+  .splitDivider{width:12px;align-self:stretch;cursor:col-resize;position:relative;min-height:100vh}
+  .splitDivider::before{content:"";position:sticky;top:50%;display:block;width:4px;height:90px;margin:calc(50vh - 45px) auto 0;background:#cbd5e1;border-radius:99px;box-shadow:0 0 0 4px #eef2f7}
+  .splitDivider:hover::before,.splitDivider.dragging::before{background:#2563eb}
+  .iframeHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:#f8fafc;border-bottom:1px solid var(--line)}
+  .iframeHead h2{font-size:16px}.iframeBtns{display:flex;gap:8px;flex-wrap:wrap}.iframeBtns button{padding:8px 10px;font-size:12px;border-radius:10px}
+  .sheetFrame{width:100%;height:100%;border:0;flex:1;background:#fff}
+  .rightPane.collapsed{min-width:46px}.rightPane.collapsed .iframeHead{height:100%;writing-mode:vertical-rl;justify-content:center;padding:10px 6px}.rightPane.collapsed .iframeHead h2{font-size:13px;white-space:nowrap}.rightPane.collapsed .sheetFrame,.rightPane.collapsed .iframeHint{display:none}.rightPane.collapsed #reloadSheetBtn,.rightPane.collapsed #openSheetBtn,.rightPane.collapsed #widerLeftBtn,.rightPane.collapsed #widerRightBtn{display:none}.rightPane.collapsed #collapseSheetBtn{display:inline-block;writing-mode:horizontal-tb;margin-top:10px;padding:7px 8px}
+  .iframeHint{padding:8px 12px;font-size:12px;color:var(--muted);background:#fff7ed;border-top:1px solid #fed7aa}
+  @media(max-width:1100px){.appShell{grid-template-columns:1fr}.splitDivider{display:none}.leftPane{padding-right:0}.rightPane{position:relative;height:720px;top:auto}.grid,.settings,.summary{grid-template-columns:1fr}.hero h1{font-size:22px}body{padding:12px}}
 </style>
 </head>
 <body>
+<div id="appShell" class="appShell">
+<main class="leftPane">
 <div class="wrap">
   <div class="hero">
-    <h1>PBSU T2 Flexi Check</h1>
+    <h1>CSSU T2 Cancelled Officer Checker v14</h1>
     <p>Upload only the finalized RMU Flexi roster. This page will auto-detect the date from the finalized filename, read the matching date tab from your Google Sheet, check column G cancellation status, then export every valid officer from the Google Sheet date tab. Officers found in finalized CSSU T2 use finalized roster details; officers not found in finalized are still included using Google Sheet ID/name/shift. Random/non-officer rows are ignored.</p>
   </div>
 
@@ -96,10 +109,6 @@
     <div class="kpi purple"><div class="label">Google Sheet Date Tab</div><div id="kpiSheet" class="num" style="font-size:18px">-</div></div>
   </div>
 
-  <div id="criticalWrap" class="tableWrap hide">
-    <div class="tableTitle"><h3>Need Attention: Cancelled but still in finalized T2 roster</h3><span id="criticalCount">0 rows</span></div>
-    <div style="max-height:420px;overflow:auto"><table id="criticalTable"></table></div>
-  </div>
 
   <div id="allWrap" class="tableWrap hide">
     <div class="tableTitle"><h3>All cancellation records found in Google Sheet column G</h3><span id="allCount">0 rows</span></div>
@@ -110,6 +119,23 @@
     <div class="tableTitle"><h3>Finalized CSSU T2 roster extracted</h3><span id="t2Count">0 rows</span></div>
     <div style="max-height:420px;overflow:auto"><table id="t2Table"></table></div>
   </div>
+</div>
+</main>
+<div id="splitDivider" class="splitDivider" title="Drag to resize left/right panels"></div>
+<aside id="sheetPane" class="rightPane">
+  <div class="iframeHead">
+    <h2>Google Sheet Preview</h2>
+    <div class="iframeBtns">
+      <button class="neutral" id="widerLeftBtn" type="button" title="Make checker side bigger">◀ Left</button>
+      <button class="neutral" id="widerRightBtn" type="button" title="Make Google Sheet side bigger">Right ▶</button>
+      <button class="neutral" id="reloadSheetBtn" type="button">↻ Reload</button>
+      <button class="secondary" id="openSheetBtn" type="button">↗ Open</button>
+      <button class="neutral" id="collapseSheetBtn" type="button">Hide</button>
+    </div>
+  </div>
+  <iframe id="sheetFrame" class="sheetFrame" loading="lazy"></iframe>
+  <div class="iframeHint">Preview is for checking the live Google Sheet only. Drag the middle divider to resize left/right. Hide will collapse the preview; click Show to reopen.</div>
+</aside>
 </div>
 
 <script>
@@ -162,6 +188,21 @@ function extractSheetId(urlOrId){
   const s = norm(urlOrId);
   const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : s;
+}
+
+function buildGoogleSheetFrameUrl(){
+  const sheetId = extractSheetId($('sheetUrl').value);
+  if(!sheetId) return '';
+  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit?rm=minimal`;
+}
+function refreshGoogleSheetIframe(){
+  const url = buildGoogleSheetFrameUrl();
+  if($('sheetFrame') && url) $('sheetFrame').src = url;
+}
+function openGoogleSheet(){
+  const sheetId = extractSheetId($('sheetUrl').value);
+  if(!sheetId) return;
+  window.open(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit`, '_blank');
 }
 function extractDateFromFilename(filename){
   const s = filename || '';
@@ -628,20 +669,64 @@ function renderTable(id, rows, columns){
   table.innerHTML = thead + tbody;
 }
 function renderResults(result){
-  ['summary','criticalWrap','allWrap','t2Wrap'].forEach(id=>$(id).classList.remove('hide'));
+  ['summary','allWrap','t2Wrap'].forEach(id=>$(id).classList.remove('hide'));
   $('kpiT2').textContent = result.t2.length; $('kpiCancel').textContent = result.all.length; $('kpiStill').textContent = result.critical.length; $('kpiRemoved').textContent = result.all.length - result.critical.length; $('kpiSheet').textContent = result.sheetName;
-  $('criticalCount').textContent = `${result.critical.length} rows`; $('allCount').textContent = `${result.all.length} rows`; $('t2Count').textContent = `${result.t2.length} rows`;
+  $('allCount').textContent = `${result.all.length} rows`; $('t2Count').textContent = `${result.t2.length} rows`;
   const cancelCols = [
     {label:'Status', pill:r=>pill(r.matchStatus, r.matched?'red':'green')}, {label:'ID', key:'id'}, {label:'Officer', key:'fullName'}, {label:'GS Row', key:'gsRow'},
     {label:'Column G Status', key:'cancelText'}, {label:'GS Shift', key:'shift'}, {label:'Remarks / J', key:'remarks'},
     {label:'Finalized Row', key:'finalizedRow'}, {label:'Finalized Shift', key:'finalizedShift'}, {label:'Start', key:'finalizedStart'}, {label:'End', key:'finalizedEnd'}, {label:'Match', value:r=>r.matchMethod || '-'}
   ];
-  renderTable('criticalTable', result.critical, cancelCols);
   renderTable('allTable', result.all, cancelCols);
   renderTable('t2Table', result.t2, [
     {label:'Finalized Row', key:'sourceRow'}, {label:'ID', key:'id'}, {label:'Officer', key:'fullName'}, {label:'Shift', key:'deploymentLocation'}, {label:'Start', key:'startTime'}, {label:'End', key:'endTime'}
   ]);
 }
+let savedGridTemplate = 'minmax(620px,58%) 12px minmax(420px,42%)';
+function setGridByPercent(leftPct){
+  leftPct = Math.max(35, Math.min(75, leftPct));
+  const rightPct = 100 - leftPct;
+  savedGridTemplate = `minmax(520px,${leftPct}%) 12px minmax(360px,${rightPct}%)`;
+  $('appShell')?.style.setProperty('grid-template-columns', savedGridTemplate);
+}
+function collapseOrShowSheet(){
+  const pane = $('sheetPane');
+  const shell = $('appShell');
+  const isCollapsed = pane.classList.toggle('collapsed');
+  if(isCollapsed){
+    savedGridTemplate = shell.style.gridTemplateColumns || savedGridTemplate;
+    shell.style.gridTemplateColumns = 'minmax(620px,1fr) 12px 52px';
+    $('collapseSheetBtn').textContent = 'Show';
+  }else{
+    shell.style.gridTemplateColumns = savedGridTemplate;
+    $('collapseSheetBtn').textContent = 'Hide';
+  }
+}
+function initResizableSplit(){
+  const shell = $('appShell'), divider = $('splitDivider'), pane = $('sheetPane');
+  if(!shell || !divider) return;
+  let dragging = false;
+  divider.addEventListener('mousedown', e=>{
+    if(pane.classList.contains('collapsed')) return;
+    dragging = true; divider.classList.add('dragging'); document.body.style.userSelect='none'; e.preventDefault();
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const rect = shell.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    setGridByPercent(pct);
+  });
+  window.addEventListener('mouseup', ()=>{ if(dragging){ dragging=false; divider.classList.remove('dragging'); document.body.style.userSelect=''; }});
+  divider.addEventListener('dblclick', ()=>setGridByPercent(58));
+}
+if($('reloadSheetBtn')) $('reloadSheetBtn').addEventListener('click', refreshGoogleSheetIframe);
+if($('openSheetBtn')) $('openSheetBtn').addEventListener('click', openGoogleSheet);
+if($('collapseSheetBtn')) $('collapseSheetBtn').addEventListener('click', collapseOrShowSheet);
+if($('widerLeftBtn')) $('widerLeftBtn').addEventListener('click', ()=>setGridByPercent(68));
+if($('widerRightBtn')) $('widerRightBtn').addEventListener('click', ()=>setGridByPercent(45));
+if($('sheetUrl')) $('sheetUrl').addEventListener('change', refreshGoogleSheetIframe);
+initResizableSplit();
+refreshGoogleSheetIframe();
 $('rmuFile').addEventListener('change', async e=>{
   if(!e.target.files[0]) return;
   try{
@@ -702,7 +787,7 @@ $('copyBtn').addEventListener('click', async ()=>{
 });
 $('clearBtn').addEventListener('click', ()=>{
   rmuWorkbook=null; finalizedFileName=''; lastResult=null; $('rmuFile').value=''; $('dateTab').value='';
-  ['summary','criticalWrap','allWrap','t2Wrap'].forEach(id=>$(id).classList.add('hide'));
+  ['summary','allWrap','t2Wrap'].forEach(id=>$(id).classList.add('hide'));
   $('exportBtn').disabled=true; $('copyBtn').disabled=true; setStatus('Upload finalized roster, then click check.');
 });
 </script>
