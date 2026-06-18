@@ -21,32 +21,51 @@ function isPersonnelId(v){  const s = cleanNum(v);  return /^\d{4,8}$/.test(s);}
 function extractCancelledFromRows(rows, sheetName){  const rx = buildKeywordRegex();  const cols = detectFlexiColumns(rows);  const out=[];  rows.forEach((r,zeroIdx)=>{    if(cols.headerRow >= 0 && zeroIdx <= cols.headerRow) return;    const gText = norm(r[cols.statusIdx]);    if(!rx.test(gText)) return;    const officer = makeGoogleOfficerFromRow(r, zeroIdx + 1, sheetName, cols);    if(officer){      out.push({        ...officer,        cancelColumn:'G',        cancelText:gText,        no:norm(r[cols.noIdx]),        remarks:officer.sourceRemarks      });    }  });  return out;}
 function sheetNameToDisplayDate(sheetName){  const s = norm(sheetName);  const m = s.match(/(\d{2})[.\-/](\d{2})[.\-/](\d{4})/);  return m ? `${m[1]}/${m[2]}/${m[3]}` : s;}function hhmmToMinutes(t){  const m = norm(t).match(/^(\d{1,2}):(\d{2})$/);  if(!m) return null;  return parseInt(m[1],10) * 60 + parseInt(m[2],10);}function formatShiftTime(raw){  const s = norm(raw).replace(/[^0-9]/g,'');  if(!s) return '';  const padded = s.length <= 3 ? s.padStart(4,'0') : s.slice(0,4);  return `${padded.slice(0,2)}:${padded.slice(2,4)}`;}function parseShiftTimes(shiftText){  const s = norm(shiftText);  const m = s.match(/(\d{3,4})\s*[-–—]\s*(\d{3,4})/);  if(!m) return {start:'', end:'', hours:''};  const start = formatShiftTime(m[1]);  const end = formatShiftTime(m[2]);  const sm = hhmmToMinutes(start), em0 = hhmmToMinutes(end);  let hours = '';  if(sm !== null && em0 !== null){    let em = em0;    if(em <= sm) em += 24 * 60;    hours = Math.round(((em - sm) / 60) * 100) / 100;  }  return {start, end, hours};}function extractAllGoogleSheetOfficers(rows, sheetName){  const cols = detectFlexiColumns(rows);  const out=[];  const seen = new Set();  rows.forEach((r,zeroIdx)=>{    if(cols.headerRow >= 0 && zeroIdx <= cols.headerRow) return;    const officer = makeGoogleOfficerFromRow(r, zeroIdx + 1, sheetName, cols);    if(!officer) return;    const key = `${officer.id}|${officer.shift}|${officer.first}|${officer.last}`.toUpperCase();    if(seen.has(key)) return;    seen.add(key);    out.push(officer);  });  return out;}
 
-// SHIFT MATCHER LOGIC ADDED HERE
+// ==========================================
+// SHIFT MATCHER LOGIC (FULLY BULLETPROOF)
+// ==========================================
 function isShiftMatch(g, o) {
   if(!g || !o) return false;
 
-  // 1. Try matching by Start Time (e.g., "06:00" vs "06:00:00")
-  if (g.startTime && o.startTime) {
-    const gsTime = g.startTime.slice(0,5);
-    const oTime = o.startTime.slice(0,5);
-    if (gsTime === oTime) return true;
-  }
-
-  // 2. Try matching by the Shift Code (e.g., extracting "B1" from "Shift B1")
+  // 1. Priority check by Shift Code (e.g., "B1" vs "C1")
   const extractShiftCode = s => {
     const m = norm(s).match(/SHIFT\s+([A-Z0-9]+)/i);
     return m ? up(m[1]) : null;
   };
   const gCode = extractShiftCode(g.shift);
   const oCode = extractShiftCode(o.deploymentLocation);
-  if (gCode && oCode && gCode === oCode) return true;
+  
+  if (gCode && oCode) {
+    if (gCode === oCode) return true;
+    // If explicitly different codes (like B1 vs C1), reject immediately
+    if (!gCode.includes(oCode) && !oCode.includes(gCode)) return false; 
+  }
+
+  // 2. Check exact Time Block (Start Time AND End Time)
+  if (g.startTime && o.startTime && g.endTime && o.endTime) {
+    const gStart = g.startTime.slice(0,5);
+    const oStart = o.startTime.slice(0,5);
+    const gEnd = g.endTime.slice(0,5);
+    const oEnd = o.endTime.slice(0,5);
+    
+    // If both start and end exactly match, it's a match
+    if (gStart === oStart && gEnd === oEnd) return true;
+    
+    // If start times match but end times contradict (e.g. 18:00-22:00 vs 18:00-01:00), reject
+    if (gStart === oStart && gEnd !== oEnd) return false;
+  }
+
+  // 3. Loose fallback: Only check start time if end time is missing entirely
+  if (g.startTime && o.startTime) {
+    if (g.startTime.slice(0,5) === o.startTime.slice(0,5)) return true;
+  }
 
   return false;
 }
 
-// UPDATED findFinalizedMatch FUNCTION
+// STRICTER findFinalizedMatch FUNCTION
 function findFinalizedMatch(g, finalizedT2){
-  // 1. Find all shifts this officer is working today
+  // Find all shifts this officer is working
   let candidates = finalizedT2.filter(o => o.id && g.id && o.id === g.id);
   if(!candidates.length){
     const gKey = nameKey(g.first, g.last);
@@ -54,15 +73,49 @@ function findFinalizedMatch(g, finalizedT2){
   }
 
   if(!candidates.length) return null;
-  if(candidates.length === 1) return candidates[0]; // Only 1 shift, easy match
 
-  // 2. Officer has multiple shifts! Tally by Shift Time or Shift Code
+  // Try to find an exact shift match first using our safe logic
   const exactMatch = candidates.find(o => isShiftMatch(g, o));
   if(exactMatch) return exactMatch;
 
-  // Fallback just in case shift names are completely blank
-  return candidates[0];
+  // Fallback: If only 1 shift is found in finalized, verify it absolutely doesn't contradict!
+  if(candidates.length === 1) {
+    const o = candidates[0];
+    const extractShiftCode = s => {
+      const m = norm(s).match(/SHIFT\s+([A-Z0-9]+)/i);
+      return m ? up(m[1]) : null;
+    };
+    const gCode = extractShiftCode(g.shift);
+    const oCode = extractShiftCode(o.deploymentLocation);
+    
+    // 1. Reject if shift codes are clearly different (e.g., B1 vs C1)
+    if (gCode && oCode && gCode !== oCode) {
+        if(!gCode.includes(oCode) && !oCode.includes(gCode)){
+            return null; // Different shifts, do NOT force a match
+        }
+    }
+    
+    // 2. Reject if end times directly conflict (e.g., 22:00 vs 01:00)
+    if (g.endTime && o.endTime && g.endTime.slice(0,5) !== o.endTime.slice(0,5)) {
+        return null;
+    }
+
+    // 3. Reject for wildly different start times
+    if (g.startTime && o.startTime) {
+      const gHour = parseInt(g.startTime.slice(0,2), 10);
+      const oHour = parseInt(o.startTime.slice(0,2), 10);
+      if (!isNaN(gHour) && !isNaN(oHour) && Math.abs(gHour - oHour) > 3) {
+        return null;
+      }
+    }
+
+    return o;
+  }
+
+  return null;
 }
+// ==========================================
+
 
 function excelDurationFromHours(hours){  const n = Number(hours);  if(!isFinite(n) || n <= 0) return '';  return n / 24;}function makeExportRowsFromGoogleSheet(gsAll, finalizedT2){  return (gsAll || []).map(g => {    const m = findFinalizedMatch(g, finalizedT2 || []);    return {      externalDemandId: m ? (m.externalDemandId || '') : '',      deploymentLocation: m ? (m.deploymentLocation || '') : (g.shift || ''),      deploymentDate: m ? (m.deploymentDateRaw || m.deploymentDate || '') : (g.date || ''),      shiftStart: m ? (m.startRaw || m.startTime || '') : (g.startTime || ''),      shiftEnd: m ? (m.endRaw || m.endTime || '') : (g.endTime || ''),      totalHours: m ? (m.totalHours || '') : excelDurationFromHours(g.totalHours),      personnelNo: m ? (m.id || '') : (g.id || ''),      personFirstName: m ? (m.first || '') : (g.first || ''),      personLastName: m ? (m.last || g.last || '') : (g.last || ''),      remarks: g.isCancelled ? 'Cancelled' : 'ON DUTY',      isCancelled: !!g.isCancelled,      finalizedRow: m ? (m.sourceRow || '') : '',      fromGoogleOnly: !m    };  });}function styleCell(ws, addr, style){ if(ws[addr]) ws[addr].s = style; }function setDateTimeFormats(ws, rows){  rows.forEach((r, idx) => {    const R = idx + 2;    const c = ws['C'+R], d = ws['D'+R], e = ws['E'+R], f = ws['F'+R];    if(c && typeof c.v === 'number') { c.t = 'n'; c.z = 'dd/mm/yyyy'; }    if(d && typeof d.v === 'number') { d.t = 'n'; d.z = 'hh:mm'; }    if(e && typeof e.v === 'number') { e.t = 'n'; e.z = 'hh:mm'; }    if(f && typeof f.v === 'number') { f.t = 'n'; f.z = '[h]:mm'; }  });}
 function makeStyledExportSheet(rows){  const headers = ['External Demand ID','Deployment Location','Deployment Date','Shift Start Time','Shift End Time','Total Shift Hours','Personnel no.','Person First Name','Person Last Name','Remarks'];  const aoa = [headers];  rows.forEach(r=>aoa.push([r.externalDemandId, r.deploymentLocation, r.deploymentDate, r.shiftStart, r.shiftEnd, r.totalHours, r.personnelNo, r.personFirstName, r.personLastName, r.remarks]));  const ws = XLSX.utils.aoa_to_sheet(aoa);  setDateTimeFormats(ws, rows);  const range = XLSX.utils.decode_range(ws['!ref']);  const headerStyle = {font:{bold:true,color:{rgb:'000000'}},fill:{patternType:'solid',fgColor:{rgb:'D9D9D9'}},alignment:{horizontal:'center',vertical:'center'},border:{top:{style:'thin',color:{rgb:'A6A6A6'}},bottom:{style:'thin',color:{rgb:'A6A6A6'}},left:{style:'thin',color:{rgb:'A6A6A6'}},right:{style:'thin',color:{rgb:'A6A6A6'}}}};  const bodyBorder = {top:{style:'thin',color:{rgb:'D9D9D9'}},bottom:{style:'thin',color:{rgb:'D9D9D9'}},left:{style:'thin',color:{rgb:'D9D9D9'}},right:{style:'thin',color:{rgb:'D9D9D9'}}};  const yellowStyle = {fill:{patternType:'solid',fgColor:{rgb:'FFFF00'}},border:bodyBorder};  const normalStyle = {border:bodyBorder};  for(let C=range.s.c; C<=range.e.c; C++){    const addr = XLSX.utils.encode_cell({r:0,c:C});    if(ws[addr]) ws[addr].s = headerStyle;  }  rows.forEach((r,idx)=>{    const R = idx + 1;    for(let C=range.s.c; C<=range.e.c; C++){      const addr = XLSX.utils.encode_cell({r:R,c:C});      if(!ws[addr]) ws[addr] = {t:'s',v:''};      ws[addr].s = r.isCancelled ? yellowStyle : normalStyle;    }  });  ws['!cols'] = [    {wch:24},{wch:42},{wch:16},{wch:16},{wch:16},{wch:16},{wch:14},{wch:24},{wch:24},{wch:14}  ];  ws['!freeze'] = {xSplit:0,ySplit:1};  return ws;}
